@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.FocusRequester
@@ -202,6 +203,7 @@ private fun ModernContinueWatchingRowItem(
         cornerRadius = continueWatchingCornerRadius,
         isFocused = isCardFocused,
         modifier = modifier
+            .zIndex(if (isCardFocused) 10f else 0f)
             .focusRequester(requester)
             .onFocusChanged {
                 isCardFocused = it.isFocused
@@ -1084,12 +1086,12 @@ private fun ModernCarouselCard(
     } else {
         cardHeight * (16f / 9f)
     }
-    val targetCardWidth = if (focusedPosterBackdropExpandEnabled && isBackdropExpanded) {
+    val targetCardWidth = if (focusedPosterBackdropExpandEnabled && isBackdropExpanded && !cinemaMode) {
         expandedCardWidth
     } else {
         cardWidth
     }
-    val animatedCardWidthState = if (focusedPosterBackdropExpandEnabled) {
+    val animatedCardWidthState = if (focusedPosterBackdropExpandEnabled && !cinemaMode) {
         animateDpAsState(
             targetValue = targetCardWidth,
             label = "modernCardWidth"
@@ -1263,9 +1265,11 @@ private fun ModernCarouselCard(
         titleMedium.copy(fontWeight = FontWeight.Medium)
     }
 
+    val cardZIndex = if (isFocused) 10f else 0f
     Column(
         modifier = modifier
             .width(animatedCardWidth)
+            .zIndex(cardZIndex)
             .recompositionHighlighter(),
         verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
     ) {
@@ -1325,7 +1329,10 @@ private fun ModernCarouselCard(
                 focusedContainerColor = backgroundCardColor
             ),
             border = CardDefaults.border(focusedBorder = effectiveFocusedBorder),
-            scale = CardDefaults.scale(focusedScale = 1f),
+            scale = CardDefaults.scale(
+                scale = 1f,
+                focusedScale = if (cinemaMode) 1.10f else 1f
+            ),
             glow = effectiveCardGlow
         ) {
             Box(

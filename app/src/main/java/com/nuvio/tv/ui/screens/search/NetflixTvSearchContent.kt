@@ -50,6 +50,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -373,10 +375,12 @@ fun NetflixTvSearchContent(
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(4),
                     state = gridState,
-                    contentPadding = PaddingValues(bottom = 64.dp, top = 4.dp),
+                    contentPadding = PaddingValues(bottom = 64.dp, top = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { clip = false }
                 ) {
                     itemsIndexed(
                         items = displayItems,
@@ -511,6 +515,7 @@ private fun NetflixPosterCard(
     Card(
         onClick = onClick,
         modifier = modifier
+            .zIndex(if (isFocused) 10f else 0f)
             .fillMaxWidth()
             .aspectRatio(2f / 3f)
             .scale(scale)

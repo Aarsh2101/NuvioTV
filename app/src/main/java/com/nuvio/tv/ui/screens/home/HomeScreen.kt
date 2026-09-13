@@ -5,6 +5,7 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.EnterTransition
 import com.nuvio.tv.ui.navigation.Screen
 import android.util.Log
@@ -412,20 +413,28 @@ fun HomeScreen(
                                 onCatalogItemLongPress = onCatalogItemLongPress
                             )
 
-                            HomeLayout.MODERN, HomeLayout.CINEMA -> ModernHomeRoute(
-                                viewModel = viewModel,
-                                cinemaMode = isCinema,
-                                cinemaContentType = effectiveCinemaContentType,
-                                uiState = uiState,
-                                onNavigateToDetail = onNavigateToDetailStable,
-                                onContinueWatchingClick = onContinueWatchingClickStable,
-                                onContinueWatchingStartFromBeginning = onContinueWatchingStartFromBeginningStable,
-                                onContinueWatchingPlayManually = onContinueWatchingPlayManuallyStable,
-                                showContinueWatchingManualPlayOption = effectiveAutoplayEnabled,
-                                onNavigateToFolderDetail = onNavigateToFolderDetailStable,
-                                isCatalogItemWatched = isCatalogItemWatched,
-                                onCatalogItemLongPress = onCatalogItemLongPress
-                            )
+                            HomeLayout.MODERN, HomeLayout.CINEMA -> {
+                                Crossfade(
+                                    targetState = effectiveCinemaContentType,
+                                    animationSpec = tween(durationMillis = 220),
+                                    label = "cinemaCategoryCrossfade"
+                                ) { targetCategory ->
+                                    ModernHomeRoute(
+                                        viewModel = viewModel,
+                                        cinemaMode = isCinema,
+                                        cinemaContentType = targetCategory,
+                                        uiState = uiState,
+                                        onNavigateToDetail = onNavigateToDetailStable,
+                                        onContinueWatchingClick = onContinueWatchingClickStable,
+                                        onContinueWatchingStartFromBeginning = onContinueWatchingStartFromBeginningStable,
+                                        onContinueWatchingPlayManually = onContinueWatchingPlayManuallyStable,
+                                        showContinueWatchingManualPlayOption = effectiveAutoplayEnabled,
+                                        onNavigateToFolderDetail = onNavigateToFolderDetailStable,
+                                        isCatalogItemWatched = isCatalogItemWatched,
+                                        onCatalogItemLongPress = onCatalogItemLongPress
+                                    )
+                                }
+                            }
                         }
                     }
                 }

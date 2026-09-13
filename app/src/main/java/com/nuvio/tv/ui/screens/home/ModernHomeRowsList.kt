@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -279,20 +280,35 @@ internal fun ModernHomeRowsList(
     ) {
         LazyColumn(
             state = verticalRowListState,
-            modifier = modifier
-                .fillMaxWidth()
-                .recompositionHighlighter()
-                .height(rowsViewportHeight)
-                .padding(bottom = catalogBottomPadding)
-                .clipToBounds()
-                .graphicsLayer { alpha = trailerContentAlpha() }
-                .focusRequester(contentFocusRequester)
-                .then(
-                    if (cinemaTopNavFocusRequester != null) {
-                        Modifier.focusProperties { up = cinemaTopNavFocusRequester }
-                    } else Modifier
-                )
-                .focusRestorer { focusRestorerRequester() }
+            modifier = if (cinemaMode) {
+                modifier
+                    .fillMaxSize()
+                    .recompositionHighlighter()
+                    .clipToBounds()
+                    .graphicsLayer { alpha = trailerContentAlpha() }
+                    .focusRequester(contentFocusRequester)
+                    .then(
+                        if (cinemaTopNavFocusRequester != null) {
+                            Modifier.focusProperties { up = cinemaTopNavFocusRequester }
+                        } else Modifier
+                    )
+                    .focusRestorer { focusRestorerRequester() }
+            } else {
+                modifier
+                    .fillMaxWidth()
+                    .recompositionHighlighter()
+                    .height(rowsViewportHeight)
+                    .padding(bottom = catalogBottomPadding)
+                    .clipToBounds()
+                    .graphicsLayer { alpha = trailerContentAlpha() }
+                    .focusRequester(contentFocusRequester)
+                    .then(
+                        if (cinemaTopNavFocusRequester != null) {
+                            Modifier.focusProperties { up = cinemaTopNavFocusRequester }
+                        } else Modifier
+                    )
+                    .focusRestorer { focusRestorerRequester() }
+            }
                 .onPreviewKeyEvent { event ->
                     val firstRowKey = carouselRows.list.firstOrNull()?.key
                     val lastRowKey = carouselRows.list.lastOrNull()?.key
@@ -373,12 +389,16 @@ internal fun ModernHomeRowsList(
                         }
                     },
                 ),
-            contentPadding = PaddingValues(bottom = rowsViewportHeight),
+            contentPadding = if (cinemaMode) {
+                PaddingValues(top = 340.dp, bottom = 80.dp)
+            } else {
+                PaddingValues(bottom = rowsViewportHeight)
+            },
             verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xl)
         ) {
             itemsIndexed(
                 items = carouselRows.list,
-                key = { index, row -> "${row.key}_$index" },
+                key = { _, row -> row.key },
                 contentType = { _, row -> row.apiType ?: "modern_home_row" }
             ) { _, row ->
                 val stableOnContinueWatchingOptions = remember(onContinueWatchingOptions) {

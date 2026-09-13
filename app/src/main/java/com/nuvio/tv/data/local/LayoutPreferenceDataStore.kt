@@ -157,6 +157,10 @@ class LayoutPreferenceDataStore @Inject constructor(
         }
     }
 
+    val isCinemaLayout: Flow<Boolean> = profileFlow { prefs ->
+        prefs[layoutKey] == HomeLayout.CINEMA.name
+    }
+
     val continueWatchingEnabled: Flow<Boolean> = profileFlow { prefs ->
         prefs[continueWatchingEnabledKey] ?: true
     }

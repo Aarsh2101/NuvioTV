@@ -657,7 +657,12 @@ fun ModernHomeContent(
     val screenWidth = localConfiguration.screenWidthDp.dp
     val screenHeight = localConfiguration.screenHeightDp.dp
 
-    Box(modifier = Modifier.fillMaxSize().background(NuvioTheme.colors.Background)) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = if (cinemaMode) 86.dp else 0.dp)
+            .background(NuvioTheme.colors.Background)
+    ) {
             val posterCardCornerRadius = remember(uiState.posterCardCornerRadiusDp) { uiState.posterCardCornerRadiusDp.dp }
             val rowHorizontalPadding = 52.dp
 

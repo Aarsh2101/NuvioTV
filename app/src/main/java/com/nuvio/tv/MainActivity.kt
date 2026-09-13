@@ -234,6 +234,7 @@ private data class MainUiPrefs(
     val amoledMode: Boolean = false,
     val amoledSurfacesMode: Boolean = false,
     val hasChosenLayout: Boolean? = null,
+    val cinemaLayout: Boolean = false,
     val experienceMode: ExperienceMode? = null,
     val experienceModeLoaded: Boolean = false,
     val addonSetupSkipped: Boolean = false,
@@ -513,7 +514,7 @@ open class MainActivity : ComponentActivity() {
                         experienceModeLoaded = true,
                     )
                 }
-                val layoutAndFeaturesFlow = combine(
+                val layoutAndFeaturesBaseFlow = combine(
                     layoutPreferenceDataStore.hasChosenLayout,
                     layoutPreferenceDataStore.sidebarCollapsedByDefault,
                     layoutPreferenceDataStore.modernSidebarEnabled,
@@ -527,6 +528,12 @@ open class MainActivity : ComponentActivity() {
                         modernSidebarBlurPref = modernSidebarBlurPref,
                         discoverLocation = discoverLocation,
                     )
+                }
+                val layoutAndFeaturesFlow = combine(
+                    layoutAndFeaturesBaseFlow,
+                    layoutPreferenceDataStore.isCinemaLayout
+                ) { layoutPrefs, cinemaLayout ->
+                    layoutPrefs.copy(cinemaLayout = cinemaLayout)
                 }
                 val extraFeaturesFlow = combine(
                     experienceModeDataStore.addonSetupSkipped,
@@ -555,6 +562,7 @@ open class MainActivity : ComponentActivity() {
                         modernSidebarEnabled = layoutPrefs.modernSidebarEnabled,
                         modernSidebarBlurPref = layoutPrefs.modernSidebarBlurPref,
                         discoverLocation = layoutPrefs.discoverLocation,
+                        cinemaLayout = layoutPrefs.cinemaLayout,
                         addonSetupSkipped = extraPrefs.addonSetupSkipped,
                         smoothBringIntoViewEnabled = extraPrefs.smoothBringIntoViewEnabled,
                         fastHorizontalNavigationEnabled = extraPrefs.fastHorizontalNavigationEnabled,
@@ -1148,6 +1156,7 @@ open class MainActivity : ComponentActivity() {
                                     selectedDrawerRoute = selectedDrawerRoute,
                                     sidebarCollapsed = sidebarCollapsed,
                                     hideBuiltInHeaders = false,
+                                    hideSidebar = mainUiPrefs.cinemaLayout,
                                     activeProfileName = activeProfile?.name ?: "",
                                     activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
                                     activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
@@ -1357,6 +1366,7 @@ private fun LegacySidebarScaffold(
     selectedDrawerRoute: String?,
     sidebarCollapsed: Boolean,
     hideBuiltInHeaders: Boolean,
+    hideSidebar: Boolean = false,
     activeProfileName: String,
     activeProfileColorHex: String,
     activeProfileAvatarImageUrl: String?,
@@ -1368,7 +1378,7 @@ private fun LegacySidebarScaffold(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerItemFocusRequesters = rememberDrawerItemFocusRequesters(drawerItems)
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    val showSidebar = currentRoute in rootRoutes
+    val showSidebar = !hideSidebar && currentRoute in rootRoutes
 
     LaunchedEffect(currentRoute) {
         longPressBackHeld.value = false

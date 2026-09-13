@@ -223,7 +223,11 @@ class LayoutPreferenceDataStore @Inject constructor(
     }
 
     val modernSidebarEnabled: Flow<Boolean> = profileFlow { prefs ->
-        prefs[modernSidebarEnabledKey] ?: prefs[legacyModernSidebarEnabledKey] ?: false
+        val selectedLayout = prefs[layoutKey]
+        val enabled = prefs[modernSidebarEnabledKey] ?: prefs[legacyModernSidebarEnabledKey] ?: false
+        // Cinema owns the top navigation surface; do not render the legacy sidebar
+        // underneath it. Other layouts retain the user's sidebar preference.
+        enabled && selectedLayout != HomeLayout.CINEMA.name
     }
 
     val modernSidebarBlurEnabled: Flow<Boolean> = profileFlow { prefs ->

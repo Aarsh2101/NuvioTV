@@ -2,9 +2,11 @@ package com.nuvio.tv.ui.screens.home
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
+import com.nuvio.tv.ui.navigation.Screen
 import android.util.Log
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -101,6 +103,19 @@ fun HomeScreen(
     cinemaContentType: String? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val cinemaFocusController = LocalCinemaFocusController.current
+    val isCinema = cinemaMode || cinemaContentType != null || uiState.homeLayout == HomeLayout.CINEMA
+    val activeCategory = cinemaFocusController?.activeCinemaCategory
+    val effectiveCinemaContentType = when {
+        cinemaContentType != null -> cinemaContentType
+        isCinema && activeCategory == Screen.CinemaMovies.route -> "movie"
+        isCinema && activeCategory == Screen.CinemaShows.route -> "series"
+        else -> null
+    }
+
+    BackHandler(enabled = isCinema && effectiveCinemaContentType != null) {
+        cinemaFocusController?.activeCinemaCategory = Screen.Home.route
+    }
 
     // Home was the only major screen without a lifecycle observer, so nothing ever told it to
     // look at its catalogs again.
@@ -366,7 +381,7 @@ fun HomeScreen(
                                 )
                         }
                     ) {
-                        when (if (cinemaMode || cinemaContentType != null) HomeLayout.CINEMA else uiState.homeLayout) {
+                        when (if (isCinema) HomeLayout.CINEMA else uiState.homeLayout) {
                             HomeLayout.CLASSIC -> ClassicHomeRoute(
                                 viewModel = viewModel,
                                 uiState = uiState,
@@ -399,8 +414,8 @@ fun HomeScreen(
 
                             HomeLayout.MODERN, HomeLayout.CINEMA -> ModernHomeRoute(
                                 viewModel = viewModel,
-                                cinemaMode = cinemaMode || cinemaContentType != null || uiState.homeLayout == HomeLayout.CINEMA,
-                                cinemaContentType = cinemaContentType,
+                                cinemaMode = isCinema,
+                                cinemaContentType = effectiveCinemaContentType,
                                 uiState = uiState,
                                 onNavigateToDetail = onNavigateToDetailStable,
                                 onContinueWatchingClick = onContinueWatchingClickStable,

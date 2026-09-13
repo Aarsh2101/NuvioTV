@@ -9,6 +9,7 @@ package com.nuvio.tv.ui.screens.home
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 import androidx.activity.compose.BackHandler
+import com.nuvio.tv.ui.navigation.Screen
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -1059,7 +1060,10 @@ fun ModernHomeContent(
             val contentFocusRequester = LocalContentFocusRequester.current
             val cinemaFocusController = LocalCinemaFocusController.current
             val cinemaTopNavFocusRequester = if (cinemaPresentation) {
-                cinemaFocusController?.requester(cinemaFocusController.selectedRoute)
+                val activeRoute = cinemaFocusController?.activeCinemaCategory
+                    ?: cinemaFocusController?.selectedRoute
+                    ?: Screen.Home.route
+                cinemaFocusController?.requester(activeRoute)
             } else {
                 null
             }

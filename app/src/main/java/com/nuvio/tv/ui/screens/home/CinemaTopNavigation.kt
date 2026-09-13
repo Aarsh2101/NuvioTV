@@ -7,6 +7,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,12 +33,24 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.Card
@@ -62,6 +75,7 @@ internal class CinemaFocusController {
     private val navFocusRequesters = mutableMapOf<String, FocusRequester>()
 
     var selectedRoute by mutableStateOf(Screen.Home.route)
+    var activeCinemaCategory by mutableStateOf(Screen.Home.route)
     var pendingNavigationRoute by mutableStateOf<String?>(null)
         private set
     var navigationGeneration by mutableIntStateOf(0)
@@ -163,10 +177,35 @@ internal fun CinemaTopNavigation(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CinemaNavButton(stringResource(R.string.nav_home), Screen.Home.route, selectedRoute, onNavigate, focusController)
-            CinemaNavButton(stringResource(R.string.nav_movies), Screen.CinemaMovies.route, selectedRoute, onNavigate, focusController)
-            CinemaNavButton(stringResource(R.string.nav_tv_shows), Screen.CinemaShows.route, selectedRoute, onNavigate, focusController)
-            CinemaNavButton(stringResource(R.string.nav_search), Screen.Search.route, selectedRoute, onNavigate, focusController)
+            CinemaNavButton(
+                label = stringResource(R.string.nav_home),
+                route = Screen.Home.route,
+                selectedRoute = selectedRoute,
+                onNavigate = onNavigate,
+                focusController = focusController
+            )
+            CinemaNavButton(
+                label = stringResource(R.string.nav_movies),
+                route = Screen.CinemaMovies.route,
+                selectedRoute = selectedRoute,
+                onNavigate = onNavigate,
+                focusController = focusController
+            )
+            CinemaNavButton(
+                label = stringResource(R.string.nav_tv_shows),
+                route = Screen.CinemaShows.route,
+                selectedRoute = selectedRoute,
+                onNavigate = onNavigate,
+                focusController = focusController
+            )
+            CinemaNavButton(
+                label = stringResource(R.string.nav_search),
+                route = Screen.Search.route,
+                selectedRoute = selectedRoute,
+                onNavigate = onNavigate,
+                focusController = focusController,
+                leadingIcon = Icons.Default.Search
+            )
             CinemaNavButton(
                 label = stringResource(R.string.nav_my_list),
                 route = Screen.Library.route,
@@ -184,6 +223,7 @@ internal fun CinemaTopNavigation(
                 selectedRoute = selectedRoute,
                 onNavigate = onNavigate,
                 focusController = focusController,
+                leadingIcon = Icons.Default.Settings,
                 modifier = Modifier.focusProperties {
                     focusController?.requester(Screen.Library.route)?.let { left = it }
                 }
@@ -199,23 +239,38 @@ private fun CinemaNavButton(
     selectedRoute: String,
     onNavigate: (String) -> Unit,
     focusController: CinemaFocusController?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    leadingIcon: ImageVector? = null
 ) {
     var focused by remember { mutableStateOf(false) }
     val latestOnNavigate by rememberUpdatedState(onNavigate)
-    val selected = selectedRoute == route
+    val isRailRoute = route in CINEMA_RAIL_ROUTES
+    val activeCategory = focusController?.activeCinemaCategory ?: Screen.Home.route
+    val selected = if (isRailRoute && selectedRoute in CINEMA_RAIL_ROUTES) {
+        activeCategory == route
+    } else {
+        selectedRoute == route
+    }
 
     fun navigateFromTopBar() {
+        if (isRailRoute) {
+            focusController?.activeCinemaCategory = route
+        }
         focusController?.beginTopBarNavigation(route)
         latestOnNavigate(route)
     }
 
     // Focus is intentionally a navigation gesture in Cinema. Debouncing here, rather than in
     // the route shell, cancels immediately when D-pad focus continues to the next tab.
-    LaunchedEffect(focused, route, selectedRoute) {
+    LaunchedEffect(focused, route, selectedRoute, focusController?.activeCinemaCategory) {
         if (!focused) return@LaunchedEffect
         kotlinx.coroutines.delay(CINEMA_NAV_FOCUS_DEBOUNCE_MS)
-        if (focused && selectedRoute != route) {
+        val currentActive = if (isRailRoute && selectedRoute in CINEMA_RAIL_ROUTES) {
+            focusController?.activeCinemaCategory ?: selectedRoute
+        } else {
+            selectedRoute
+        }
+        if (focused && currentActive != route) {
             navigateFromTopBar()
         }
     }
@@ -237,10 +292,8 @@ private fun CinemaNavButton(
             .height(40.dp)
             .then(if (navFocusRequester != null) Modifier.focusRequester(navFocusRequester) else Modifier)
             .then(
-                if (focusController != null && route in CINEMA_RAIL_ROUTES) {
-                    // The Cinema rail has a stable shared entry requester. Other shell screens
-                    // own different first controls, so leave Down geometric rather than pointing
-                    // at a requester that is not attached to their content.
+                if (focusController != null && (route in CINEMA_RAIL_ROUTES || route == Screen.Search.route)) {
+                    // The Cinema rail and Search have stable shared entry requesters.
                     Modifier.focusProperties {
                         down = focusController.contentFocusRequester
                     }
@@ -267,18 +320,49 @@ private fun CinemaNavButton(
         ),
         shape = CardDefaults.shape(shape = RoundedCornerShape(21.dp))
     ) {
+        val textColor = when {
+            focused -> Color.Black
+            selected -> Color.White
+            else -> Color.White.copy(alpha = 0.65f)
+        }
+
         Box(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
+            modifier = Modifier
+                .fillMaxHeight()
+                .padding(horizontal = if (leadingIcon != null) 14.dp else 16.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = label,
-                color = if (focused) Color.Black else Color.White,
-                style = androidx.tv.material3.MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Medium
-                ),
-                maxLines = 1
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                if (leadingIcon != null) {
+                    Icon(
+                        imageVector = leadingIcon,
+                        contentDescription = null,
+                        tint = textColor,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .offset(y = (-1).dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
+                Text(
+                    text = label,
+                    color = textColor,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.offset(y = (-1).dp),
+                    style = androidx.tv.material3.MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Medium,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                        lineHeightStyle = LineHeightStyle(
+                            alignment = LineHeightStyle.Alignment.Center,
+                            trim = LineHeightStyle.Trim.Both
+                        )
+                    ),
+                    maxLines = 1
+                )
+            }
         }
     }
 }

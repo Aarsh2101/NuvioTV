@@ -1205,7 +1205,8 @@ open class MainActivity : ComponentActivity() {
                                         navigateToDrawerRoute(
                                             navController = navController,
                                             currentRoute = currentRoute,
-                                            targetRoute = targetRoute
+                                            targetRoute = targetRoute,
+                                            cinemaMode = mainUiPrefs.cinemaLayout
                                         )
                                     },
                                     modifier = Modifier.align(Alignment.TopCenter)
@@ -2354,10 +2355,24 @@ private fun CollapsedSidebarPill(
 private fun navigateToDrawerRoute(
     navController: NavHostController,
     currentRoute: String?,
-    targetRoute: String
+    targetRoute: String,
+    cinemaMode: Boolean = false
 ) {
-    if (currentRoute == targetRoute) {
-        if (targetRoute == Screen.Home.route) {
+    val cinemaRailRoutes = setOf(Screen.Home.route, Screen.CinemaMovies.route, Screen.CinemaShows.route)
+    if (cinemaMode) {
+        // When switching between Home, Movies, and TV Shows in Cinema Mode, the browsing shell
+        // stays unified on Screen.Home with zero NavHost teardown and instant in-memory category filtering.
+        if (targetRoute in cinemaRailRoutes && currentRoute in cinemaRailRoutes) {
+            return
+        }
+    }
+    val effectiveTargetRoute = if (cinemaMode && targetRoute in cinemaRailRoutes) {
+        Screen.Home.route
+    } else {
+        targetRoute
+    }
+    if (currentRoute == effectiveTargetRoute) {
+        if (effectiveTargetRoute == Screen.Home.route) {
             // Scroll Home to top by clearing saved focus/scroll state on the ViewModel.
             val homeEntry = try {
                 navController.getBackStackEntry(Screen.Home.route)
@@ -2371,7 +2386,7 @@ private fun navigateToDrawerRoute(
         return
     }
     try {
-        navController.navigate(targetRoute) {
+        navController.navigate(effectiveTargetRoute) {
             popUpTo(navController.graph.startDestinationId) {
                 saveState = true
             }
@@ -2379,7 +2394,7 @@ private fun navigateToDrawerRoute(
             restoreState = true
         }
     } catch (e: IllegalArgumentException) {
-        Log.w("NuvioNavigation", "Route not found in nav graph: $targetRoute", e)
+        Log.w("NuvioNavigation", "Route not found in nav graph: $effectiveTargetRoute", e)
     }
 }
 

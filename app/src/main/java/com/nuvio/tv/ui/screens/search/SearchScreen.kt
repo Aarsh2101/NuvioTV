@@ -557,6 +557,25 @@ fun SearchScreen(
         }
     }
 
+    if (cinemaFocusController != null) {
+        NetflixTvSearchContent(
+            uiState = uiState,
+            onQueryChanged = handleQueryChanged,
+            onNavigateToDetail = onNavigateToDetail,
+            onItemFocus = { id, type -> viewModel.prefetchMetaOnFocus(id, type) },
+            onEnsureDiscoverLoaded = { viewModel.ensureDiscoverLoaded(force = true) },
+            cinemaTopNavFocusRequester = cinemaTopNavFocusRequester,
+            contentFocusRequester = cinemaFocusController.contentFocusRequester,
+            onNavigateBackToHome = {
+                cinemaFocusController.activeCinemaCategory = Screen.Home.route
+                cinemaFocusController.requester(Screen.Home.route).let {
+                    runCatching { it.requestFocus() }
+                }
+            }
+        )
+        return
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()

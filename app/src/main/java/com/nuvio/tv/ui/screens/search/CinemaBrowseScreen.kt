@@ -1,36 +1,22 @@
 package com.nuvio.tv.ui.screens.search
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import com.nuvio.tv.ui.screens.home.CinemaTopNavigation
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.nuvio.tv.ui.screens.home.HomeScreen
+import com.nuvio.tv.ui.screens.home.HomeViewModel
 
+/** Cinema's Movies and TV Shows roots use the same catalog/presentation pipeline as Home. */
 @Composable
 fun CinemaBrowseScreen(
     contentType: String,
-    title: String,
-    selectedRoute: String,
-    onNavigateToRoute: (String) -> Unit,
-    onNavigateToDetail: (String, String, String) -> Unit
+    onNavigateToDetail: (String, String, String) -> Unit,
+    cinemaMode: Boolean = true,
+    viewModel: HomeViewModel = hiltViewModel()
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        DiscoverScreen(
-            showBuiltInHeader = true,
-            headerTitle = title,
-            initialContentType = contentType,
-            lockContentType = true,
-            forceDiscoverEnabled = true,
-            // Cinema browse owns a compact, collapsible filter chrome. The regular Discover
-            // route keeps its existing header and controls.
-            cinemaBrowse = true,
-            contentTopPadding = 96.dp,
-            onNavigateToDetail = onNavigateToDetail
-        )
-        CinemaTopNavigation(
-            selectedRoute = selectedRoute,
-            onNavigate = onNavigateToRoute
-        )
-    }
+    HomeScreen(
+        viewModel = viewModel,
+        cinemaMode = cinemaMode,
+        cinemaContentType = contentType,
+        onNavigateToDetail = onNavigateToDetail
+    )
 }

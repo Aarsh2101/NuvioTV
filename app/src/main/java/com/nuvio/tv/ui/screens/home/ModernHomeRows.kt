@@ -220,6 +220,7 @@ private fun ModernCatalogRowItem(
     requester: FocusRequester,
     isTargetItem: Boolean = false,
     useLandscapePosters: Boolean,
+    cinemaMode: Boolean = false,
     showLabels: Boolean,
     placeholderShimmerOffsetState: State<Float>?,
     posterCardCornerRadius: Dp,
@@ -374,6 +375,7 @@ private fun ModernCatalogRowItem(
         cardCornerRadius = posterCardCornerRadius,
         cardWidth = cardMetrics.width,
         cardHeight = cardMetrics.height,
+        cinemaMode = cinemaMode,
         modifier = modifier,
         focusedPosterBackdropExpandEnabled = effectiveExpandEnabled,
         isBackdropExpanded = effectiveBackdropExpanded,
@@ -438,6 +440,7 @@ internal fun ModernRowSection(
     onPendingRowFocusCleared: () -> Unit,
     onRowItemFocused: (String, Int, Boolean) -> Unit,
     useLandscapePosters: Boolean,
+    cinemaMode: Boolean = false,
     showLabels: Boolean,
     posterCardCornerRadius: Dp,
     focusedPosterBackdropTrailerMuted: Boolean,
@@ -836,8 +839,8 @@ internal fun ModernRowSection(
         // When a poster in this row expands, ensure it scrolls fully into view.
         var isExpansionScrollActive by remember { mutableStateOf(false) }
         val expandedCardWidthPx = with(density) {
-            if (useLandscapePosters) {
-                landscapeCatalogCardWidth.roundToPx()
+            if (useLandscapePosters && cinemaMode) {
+                (landscapeCatalogCardWidth * 1.45f).roundToPx()
             } else {
                 (portraitCatalogCardHeight * (16f / 9f)).roundToPx()
             }
@@ -1001,6 +1004,7 @@ internal fun ModernRowSection(
                                 requester = requester,
                                 isTargetItem = isTargetItem,
                                 useLandscapePosters = useLandscapePosters,
+                                cinemaMode = cinemaMode,
                                 showLabels = showLabels,
                                 placeholderShimmerOffsetState = placeholderShimmerOffsetState,
                                 posterCardCornerRadius = posterCardCornerRadius,
@@ -1052,6 +1056,7 @@ private fun ModernCarouselCard(
     cardCornerRadius: Dp,
     cardWidth: Dp,
     cardHeight: Dp,
+    cinemaMode: Boolean = false,
     focusedPosterBackdropExpandEnabled: Boolean,
     isBackdropExpanded: Boolean,
     playTrailerInExpandedCard: Boolean,
@@ -1074,8 +1079,8 @@ private fun ModernCarouselCard(
     val cardDepthStyle = LocalCardDepthStyle.current
     val context = LocalContext.current
     val density = LocalDensity.current
-    val expandedCardWidth = if (useLandscapeOverlayTreatment) {
-        cardWidth
+    val expandedCardWidth = if (useLandscapeOverlayTreatment && cinemaMode) {
+        cardWidth * 1.45f
     } else {
         cardHeight * (16f / 9f)
     }

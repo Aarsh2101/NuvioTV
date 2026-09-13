@@ -175,6 +175,9 @@ import com.nuvio.tv.ui.membership.LocalMemberAccess
 import com.nuvio.tv.ui.screens.account.AuthQrSignInScreen
 import com.nuvio.tv.ui.screens.addon.EssentialAddonSetupScreen
 import com.nuvio.tv.ui.screens.profile.ProfileSelectionScreen
+import com.nuvio.tv.ui.screens.home.CinemaFocusController
+import com.nuvio.tv.ui.screens.home.CinemaTopNavigation
+import com.nuvio.tv.ui.screens.home.LocalCinemaFocusController
 import com.nuvio.tv.ui.theme.NuvioComponents
 import com.nuvio.tv.ui.theme.NuvioLayout
 import com.nuvio.tv.ui.theme.NuvioMotion
@@ -205,6 +208,27 @@ import kotlinx.coroutines.launch
 
 val LocalSidebarExpanded = compositionLocalOf { false }
 val LocalContentFocusRequester = compositionLocalOf { FocusRequester.Default }
+
+private val CINEMA_NAV_SHELL_HEIGHT = 64.dp
+
+// This is deliberately separate from the app's drawer root routes. Cinema treats Discover as
+// another shell destination, while the regular sidebar must keep its existing behavior.
+private fun isCinemaRootRoute(route: String?): Boolean = route == Screen.Home.route ||
+    route == Screen.CinemaMovies.route ||
+    route == Screen.CinemaShows.route ||
+    route == Screen.Search.route ||
+    route == Screen.Discover.route ||
+    route == Screen.Library.route ||
+    route == Screen.Settings.route
+
+private fun cinemaNavigationRoute(route: String?): String = when (route) {
+    Screen.CinemaMovies.route -> Screen.CinemaMovies.route
+    Screen.CinemaShows.route -> Screen.CinemaShows.route
+    Screen.Search.route, Screen.Discover.route -> Screen.Search.route
+    Screen.Library.route -> Screen.Library.route
+    Screen.Settings.route -> Screen.Settings.route
+    else -> Screen.Home.route
+}
 
 data class SplashBackground(
     val profileColorHex: String? = null,
@@ -1103,6 +1127,7 @@ open class MainActivity : ComponentActivity() {
                     val updateBannerState = updateState.copy(
                         showBanner = updateState.showBanner && currentRoute?.startsWith("player/") != true
                     )
+                    val cinemaFocusController = remember { CinemaFocusController() }
 
                     UpdateBannerHost(
                         state = updateBannerState,
@@ -1123,6 +1148,9 @@ open class MainActivity : ComponentActivity() {
                             focusedSplashTheme = null
                             hasSelectedProfileThisSession = false
                         }
+                        CompositionLocalProvider(
+                            LocalCinemaFocusController provides cinemaFocusController
+                        ) {
                         Box(modifier = Modifier.fillMaxSize()) {
                             if (modernSidebarEnabled) {
                                 ModernSidebarScaffold(
@@ -1130,6 +1158,7 @@ open class MainActivity : ComponentActivity() {
                                     navController = navController,
                                     startDestination = startDestination,
                                     currentRoute = currentRoute,
+                                    cinemaMode = mainUiPrefs.cinemaLayout,
                                     rootRoutes = rootRoutes,
                                     drawerItems = drawerItems,
                                     selectedDrawerRoute = selectedDrawerRoute,
@@ -1151,6 +1180,7 @@ open class MainActivity : ComponentActivity() {
                                     navController = navController,
                                     startDestination = startDestination,
                                     currentRoute = currentRoute,
+                                    cinemaMode = mainUiPrefs.cinemaLayout,
                                     rootRoutes = rootRoutes,
                                     drawerItems = drawerItems,
                                     selectedDrawerRoute = selectedDrawerRoute,
@@ -1167,6 +1197,21 @@ open class MainActivity : ComponentActivity() {
                                 )
                             }
 
+                            if (mainUiPrefs.cinemaLayout && isCinemaRootRoute(currentRoute)) {
+                                CinemaTopNavigation(
+                                    selectedRoute = cinemaNavigationRoute(currentRoute),
+                                    onNavigate = { targetRoute ->
+                                        optimisticRoute = targetRoute
+                                        navigateToDrawerRoute(
+                                            navController = navController,
+                                            currentRoute = currentRoute,
+                                            targetRoute = targetRoute
+                                        )
+                                    },
+                                    modifier = Modifier.align(Alignment.TopCenter)
+                                )
+                            }
+
                             val autoNextOverlay by externalPlaybackTracker.autoNextOverlay.collectAsState()
                             autoNextOverlay?.let { ov ->
                                 com.nuvio.tv.ui.screens.player.LoadingOverlay(
@@ -1179,6 +1224,7 @@ open class MainActivity : ComponentActivity() {
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
+                        }
                         }
                     }
                 } 
@@ -1361,6 +1407,7 @@ private fun LegacySidebarScaffold(
     navController: NavHostController,
     startDestination: String,
     currentRoute: String?,
+    cinemaMode: Boolean,
     rootRoutes: Set<String>,
     drawerItems: List<DrawerItem>,
     selectedDrawerRoute: String?,
@@ -1378,7 +1425,8 @@ private fun LegacySidebarScaffold(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerItemFocusRequesters = rememberDrawerItemFocusRequesters(drawerItems)
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    val showSidebar = !hideSidebar && currentRoute in rootRoutes
+    val showSidebar = !hideSidebar && !cinemaMode && currentRoute in rootRoutes
+    val showCinemaNavigation = cinemaMode && isCinemaRootRoute(currentRoute)
 
     LaunchedEffect(currentRoute) {
         longPressBackHeld.value = false
@@ -1392,7 +1440,13 @@ private fun LegacySidebarScaffold(
 
     val focusManager = LocalFocusManager.current
     val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
-    val contentFocusRequester = remember { FocusRequester() }
+    val cinemaFocusController = LocalCinemaFocusController.current
+    val fallbackContentFocusRequester = remember { FocusRequester() }
+    val contentFocusRequester = if (cinemaMode) {
+        cinemaFocusController?.contentFocusRequester ?: fallbackContentFocusRequester
+    } else {
+        fallbackContentFocusRequester
+    }
     var pendingContentFocusTransfer by remember { mutableStateOf(false) }
     var pendingSidebarFocusRequest by remember { mutableStateOf(false) }
     // Bumped on every key event the drawer sees so the auto-collapse timer
@@ -1591,6 +1645,7 @@ private fun LegacySidebarScaffold(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = contentStartPadding)
+                .padding(top = if (showCinemaNavigation) CINEMA_NAV_SHELL_HEIGHT else 0.dp)
                 .onPreviewKeyEvent { keyEvent ->
                     // Long-press Back on a root route directly opens the sidebar,
                     // bypassing the "scroll row to start" BackHandler in home content.
@@ -1643,7 +1698,8 @@ private fun LegacySidebarScaffold(
                 NuvioNavHost(
                     navController = navController,
                     startDestination = startDestination,
-                    hideBuiltInHeaders = hideBuiltInHeaders
+                    hideBuiltInHeaders = hideBuiltInHeaders,
+                    cinemaMode = cinemaMode
                 )
             }
         }
@@ -1755,6 +1811,7 @@ private fun ModernSidebarScaffold(
     navController: NavHostController,
     startDestination: String,
     currentRoute: String?,
+    cinemaMode: Boolean,
     rootRoutes: Set<String>,
     drawerItems: List<DrawerItem>,
     selectedDrawerRoute: String?,
@@ -1770,14 +1827,21 @@ private fun ModernSidebarScaffold(
     onNavigate: (String) -> Unit,
     onExitApp: () -> Unit
 ) {
-    val showSidebar = currentRoute in rootRoutes
+    val showSidebar = !cinemaMode && currentRoute in rootRoutes
+    val showCinemaNavigation = cinemaMode && isCinemaRootRoute(currentRoute)
     val sidebarTokens = NuvioComponents.tokens.sidebar
     val collapsedSidebarWidth = if (sidebarCollapsed) NuvioTheme.spacing.none else sidebarTokens.collapsedWidth
     val openSidebarWidth = sidebarTokens.expandedWidth
 
     val focusManager = LocalFocusManager.current
     val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
-    val contentFocusRequester = remember { FocusRequester() }
+    val cinemaFocusController = LocalCinemaFocusController.current
+    val fallbackContentFocusRequester = remember { FocusRequester() }
+    val contentFocusRequester = if (cinemaMode) {
+        cinemaFocusController?.contentFocusRequester ?: fallbackContentFocusRequester
+    } else {
+        fallbackContentFocusRequester
+    }
     val drawerItemFocusRequesters = rememberDrawerItemFocusRequesters(drawerItems)
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
 
@@ -1959,6 +2023,7 @@ private fun ModernSidebarScaffold(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(top = if (showCinemaNavigation) CINEMA_NAV_SHELL_HEIGHT else 0.dp)
                 .then(
                     if (shouldApplySidebarHaze) Modifier.hazeSource(state = sidebarHazeState)
                     else Modifier
@@ -2037,7 +2102,8 @@ private fun ModernSidebarScaffold(
                 NuvioNavHost(
                     navController = navController,
                     startDestination = startDestination,
-                    hideBuiltInHeaders = hideBuiltInHeaders
+                    hideBuiltInHeaders = hideBuiltInHeaders,
+                    cinemaMode = cinemaMode
                 )
             }
         }

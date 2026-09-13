@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.library
 
+import com.nuvio.tv.ui.screens.home.LocalCinemaFocusController
+import com.nuvio.tv.ui.navigation.Screen
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -142,6 +144,12 @@ fun LibraryScreen(
     var showCloudPlayerChoice by remember { mutableStateOf(false) }
     val primaryFocusRequester = remember { FocusRequester() }
     val selectorFocusRequester = remember { FocusRequester() }
+    val cinemaFocusController = LocalCinemaFocusController.current
+    val isCinemaNavActive = cinemaFocusController != null &&
+        (cinemaFocusController.focusedNavRoute != null || cinemaFocusController.pendingNavigationRoute != null)
+    val cinemaTopNavFocusRequester = remember(cinemaFocusController) {
+        cinemaFocusController?.requester(Screen.Library.route)
+    }
     val gridState = rememberLazyGridState()
     var pendingPrimaryFocus by remember { mutableStateOf(true) }
     var lastFocusedPosterKey by rememberSaveable { mutableStateOf<String?>(null) }
@@ -188,6 +196,10 @@ fun LibraryScreen(
 
     LaunchedEffect(uiState.isLoading, uiState.sourceMode, uiState.listTabs.size) {
         if (!uiState.isLoading && pendingPrimaryFocus) {
+            if (isCinemaNavActive) {
+                pendingPrimaryFocus = false
+                return@LaunchedEffect
+            }
             val restoreKey = lastFocusedPosterKey
             val restoreIndex = restoreKey?.let { visibleItemIndexByKey[it] }
             val restoreRequester = restoreKey?.let { posterFocusRequesters[it] }
@@ -317,6 +329,7 @@ fun LibraryScreen(
             LibraryViewModeRow(
                 selectedMode = viewMode,
                 primaryFocusRequester = primaryFocusRequester,
+                cinemaTopNavFocusRequester = cinemaTopNavFocusRequester,
                 onSelected = { mode ->
                     viewMode = mode
                     expandedPicker = null
@@ -657,6 +670,7 @@ private fun LibraryViewModeRow(
     selectedMode: LibraryViewMode,
     primaryFocusRequester: FocusRequester,
     onSelected: (LibraryViewMode) -> Unit,
+    cinemaTopNavFocusRequester: FocusRequester? = null,
     /** Optional action pinned to the right of the tabs (used for the cloud refresh button). */
     trailing: (@Composable () -> Unit)? = null
 ) {
@@ -671,7 +685,12 @@ private fun LibraryViewModeRow(
                 Button(
                     onClick = { onSelected(mode) },
                     modifier = Modifier
-                        .then(if (selected) Modifier.focusRequester(primaryFocusRequester) else Modifier),
+                        .then(if (selected) Modifier.focusRequester(primaryFocusRequester) else Modifier)
+                        .then(
+                            if (cinemaTopNavFocusRequester != null) {
+                                Modifier.focusProperties { up = cinemaTopNavFocusRequester }
+                            } else Modifier
+                        ),
                     colors = ButtonDefaults.colors(
                         containerColor = if (selected) NuvioTheme.colors.FocusBackground else NuvioTheme.colors.BackgroundCard,
                         contentColor = NuvioTheme.colors.TextPrimary

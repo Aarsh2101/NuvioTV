@@ -97,7 +97,8 @@ fun HomeScreen(
     onContinueWatchingPlayManually: (ContinueWatchingItem) -> Unit = onContinueWatchingClick,
     onNavigateToCatalogSeeAll: (String, String, String) -> Unit = { _, _, _ -> },
     onNavigateToFolderDetail: (String, String) -> Unit = { _, _ -> },
-    onNavigateToRoute: (String) -> Unit = {}
+    cinemaMode: Boolean = false,
+    cinemaContentType: String? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -365,7 +366,7 @@ fun HomeScreen(
                                 )
                         }
                     ) {
-                        when (uiState.homeLayout) {
+                        when (if (cinemaMode || cinemaContentType != null) HomeLayout.CINEMA else uiState.homeLayout) {
                             HomeLayout.CLASSIC -> ClassicHomeRoute(
                                 viewModel = viewModel,
                                 uiState = uiState,
@@ -398,7 +399,8 @@ fun HomeScreen(
 
                             HomeLayout.MODERN, HomeLayout.CINEMA -> ModernHomeRoute(
                                 viewModel = viewModel,
-                                cinemaMode = uiState.homeLayout == HomeLayout.CINEMA,
+                                cinemaMode = cinemaMode || cinemaContentType != null || uiState.homeLayout == HomeLayout.CINEMA,
+                                cinemaContentType = cinemaContentType,
                                 uiState = uiState,
                                 onNavigateToDetail = onNavigateToDetailStable,
                                 onContinueWatchingClick = onContinueWatchingClickStable,
@@ -413,14 +415,6 @@ fun HomeScreen(
                     }
                 }
             }
-        }
-
-        if (uiState.homeLayout == HomeLayout.CINEMA) {
-            CinemaTopNavigation(
-                selectedRoute = "home",
-                onNavigate = onNavigateToRoute,
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
         }
 
         if (showHomeLoader) {
@@ -642,6 +636,7 @@ private fun GridHomeRoute(
 private fun ModernHomeRoute(
     viewModel: HomeViewModel,
     cinemaMode: Boolean = false,
+    cinemaContentType: String? = null,
     uiState: HomeUiState,
     onNavigateToDetail: (String, String, String) -> Unit,
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit,
@@ -689,6 +684,7 @@ private fun ModernHomeRoute(
     ModernHomeContent(
         uiState = uiState,
         cinemaMode = cinemaMode,
+        cinemaContentType = cinemaContentType,
         modernPresentation = modernPresentation,
         focusState = focusState,
         scrollToTopTrigger = scrollToTopTrigger,

@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.foundation.focusGroup
@@ -87,6 +88,7 @@ internal fun ModernHomeRowsList(
     isFastScrolling: State<Boolean>,
     onFastScrollingChanged: (Boolean) -> Unit,
     contentFocusRequester: FocusRequester,
+    cinemaTopNavFocusRequester: FocusRequester? = null,
     rowsViewportHeight: Dp,
     catalogBottomPadding: Dp,
     trailerContentAlpha: () -> Float,
@@ -108,6 +110,7 @@ internal fun ModernHomeRowsList(
     trailerPreviewUrls: StableMap<String, String>,
     trailerPreviewAudioUrls: StableMap<String, String>,
     useLandscapePosters: Boolean,
+    cinemaMode: Boolean = false,
     showLabels: Boolean,
     posterCardCornerRadius: Dp,
     focusedPosterBackdropTrailerMuted: Boolean,
@@ -284,10 +287,23 @@ internal fun ModernHomeRowsList(
                 .clipToBounds()
                 .graphicsLayer { alpha = trailerContentAlpha() }
                 .focusRequester(contentFocusRequester)
+                .then(
+                    if (cinemaTopNavFocusRequester != null) {
+                        Modifier.focusProperties { up = cinemaTopNavFocusRequester }
+                    } else Modifier
+                )
                 .focusRestorer { focusRestorerRequester() }
                 .onPreviewKeyEvent { event ->
                     val firstRowKey = carouselRows.list.firstOrNull()?.key
                     val lastRowKey = carouselRows.list.lastOrNull()?.key
+                    if (event.type == KeyEventType.KeyDown &&
+                        event.key == Key.DirectionUp &&
+                        cinemaTopNavFocusRequester != null &&
+                        activeRowKey.value == firstRowKey
+                    ) {
+                        runCatching { cinemaTopNavFocusRequester.requestFocus() }
+                        return@onPreviewKeyEvent true
+                    }
                     if (event.type == KeyEventType.KeyDown &&
                         event.key == Key.DirectionUp &&
                         effectiveExpandEnabled &&
@@ -433,6 +449,7 @@ internal fun ModernHomeRowsList(
                     onPendingRowFocusCleared = onPendingRowFocusCleared,
                     onRowItemFocused = stableOnRowItemFocused,
                     useLandscapePosters = useLandscapePosters,
+                    cinemaMode = cinemaMode,
                     showLabels = showLabels,
                     posterCardCornerRadius = posterCardCornerRadius,
                     focusedPosterBackdropTrailerMuted = focusedPosterBackdropTrailerMuted,

@@ -66,9 +66,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import com.nuvio.tv.ui.navigation.Screen
+import com.nuvio.tv.ui.screens.home.LocalCinemaFocusController
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -264,6 +267,13 @@ fun SettingsScreen(
     profileViewModel: ProfileSettingsViewModel = hiltViewModel(),
     experienceModeViewModel: ExperienceModeSettingsViewModel = hiltViewModel()
 ) {
+    val cinemaFocusController = LocalCinemaFocusController.current
+    val isCinemaNavActive = cinemaFocusController != null &&
+        (cinemaFocusController.focusedNavRoute != null || cinemaFocusController.pendingNavigationRoute != null)
+    val cinemaTopNavFocusRequester = remember(cinemaFocusController) {
+        cinemaFocusController?.requester(Screen.Settings.route)
+    }
+
     val isPrimaryProfileActive by profileViewModel.isPrimaryProfileActive.collectAsStateWithLifecycle()
     val experienceModeState by remember(experienceModeViewModel) {
         experienceModeViewModel.mode.map<ExperienceMode?, ExperienceModeLoadState> {
@@ -457,6 +467,7 @@ fun SettingsScreen(
     }
 
     LaunchedEffect(Unit) {
+        if (isCinemaNavActive) return@LaunchedEffect
         // Categories such as plugins and addons open a destination of their own, so Settings leaves
         // composition and comes back with nothing asking for the options pane: the rail is simply
         // the first thing able to take focus. Landing there loses the user's place for a trip they
@@ -595,6 +606,11 @@ fun SettingsScreen(
                                 // both name the item the rail was left on. It cannot restore an item that is
                                 // no longer composed, which is what the retry there is for.
                                 .focusRestorer()
+                                .then(
+                                    if (cinemaTopNavFocusRequester != null) {
+                                        Modifier.focusProperties { up = cinemaTopNavFocusRequester }
+                                    } else Modifier
+                                )
                                 .fillMaxWidth()
                                 .onFocusChanged { state ->
                                     val justGainedFocus = !railHadFocus && state.hasFocus
@@ -639,6 +655,9 @@ fun SettingsScreen(
                                     icon = section.icon,
                                     rawIconRes = section.rawIconRes,
                                     isSelected = selectedCategory == section.category,
+                                    modifier = if (cinemaTopNavFocusRequester != null) {
+                                        Modifier.focusProperties { up = cinemaTopNavFocusRequester }
+                                    } else Modifier,
                                     focusRequester = railFocusRequesters[section.category],
                                     onClick = { onSectionClick(section) },
                                     onFocused = {
@@ -779,6 +798,11 @@ fun SettingsScreen(
                             // both name the item the rail was left on. It cannot restore an item that is
                             // no longer composed, which is what the retry there is for.
                             .focusRestorer()
+                            .then(
+                                if (cinemaTopNavFocusRequester != null) {
+                                    Modifier.focusProperties { up = cinemaTopNavFocusRequester }
+                                } else Modifier
+                            )
                             .fillMaxSize()
                             .onFocusChanged { state ->
                                 val justGainedFocus = !railHadFocus && state.hasFocus
@@ -819,6 +843,7 @@ fun SettingsScreen(
                             items = visibleSections,
                             key = { it.category }
                         ) { section ->
+                            val isFirstSection = visibleSections.firstOrNull()?.category == section.category
                             SettingsRailButton(
                                 onFocused = {
                                     val restoringTo = railRestoringCategory
@@ -837,6 +862,9 @@ fun SettingsScreen(
                                 icon = section.icon,
                                 rawIconRes = section.rawIconRes,
                                 isSelected = selectedCategory == section.category,
+                                modifier = if (cinemaTopNavFocusRequester != null && isFirstSection) {
+                                    Modifier.focusProperties { up = cinemaTopNavFocusRequester }
+                                } else Modifier,
                                 focusRequester = railFocusRequesters[section.category],
                                 onClick = { onSectionClick(section) },
                                 onFocusedItemPositioned = if (isZenRailGlide) {
@@ -858,6 +886,11 @@ fun SettingsScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
+                        .then(
+                            if (cinemaTopNavFocusRequester != null) {
+                                Modifier.focusProperties { up = cinemaTopNavFocusRequester }
+                            } else Modifier
+                        )
                         .onKeyEvent { event ->
                             val toRailKey = if (isRtl) Key.DirectionRight else Key.DirectionLeft
                             if (event.type == KeyEventType.KeyDown && event.key == toRailKey) {

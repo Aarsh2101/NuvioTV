@@ -96,7 +96,8 @@ fun HomeScreen(
     onContinueWatchingStartFromBeginning: (ContinueWatchingItem) -> Unit = onContinueWatchingClick,
     onContinueWatchingPlayManually: (ContinueWatchingItem) -> Unit = onContinueWatchingClick,
     onNavigateToCatalogSeeAll: (String, String, String) -> Unit = { _, _, _ -> },
-    onNavigateToFolderDetail: (String, String) -> Unit = { _, _ -> }
+    onNavigateToFolderDetail: (String, String) -> Unit = { _, _ -> },
+    onNavigateToRoute: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -412,6 +413,13 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+
+        if (uiState.homeLayout == HomeLayout.CINEMA) {
+            CinemaTopNavigation(
+                onNavigate = onNavigateToRoute,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
 
         if (showHomeLoader) {

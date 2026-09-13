@@ -156,6 +156,7 @@ import com.nuvio.tv.domain.model.AuthState
 import com.nuvio.tv.domain.model.CardDepthStyle
 import com.nuvio.tv.domain.model.CosmeticEntitlement
 import com.nuvio.tv.domain.model.DiscoverLocation
+import com.nuvio.tv.domain.model.HomeLayout
 import com.nuvio.tv.domain.model.ExperienceMode
 import com.nuvio.tv.domain.model.MemberAccess
 import com.nuvio.tv.domain.model.ProfileBackgroundSelection
@@ -234,6 +235,7 @@ private data class MainUiPrefs(
     val amoledMode: Boolean = false,
     val amoledSurfacesMode: Boolean = false,
     val hasChosenLayout: Boolean? = null,
+    val selectedLayout: HomeLayout = HomeLayout.MODERN,
     val experienceMode: ExperienceMode? = null,
     val experienceModeLoaded: Boolean = false,
     val addonSetupSkipped: Boolean = false,
@@ -513,7 +515,7 @@ open class MainActivity : ComponentActivity() {
                         experienceModeLoaded = true,
                     )
                 }
-                val layoutAndFeaturesFlow = combine(
+                val layoutFeaturesBaseFlow = combine(
                     layoutPreferenceDataStore.hasChosenLayout,
                     layoutPreferenceDataStore.sidebarCollapsedByDefault,
                     layoutPreferenceDataStore.modernSidebarEnabled,
@@ -527,6 +529,12 @@ open class MainActivity : ComponentActivity() {
                         modernSidebarBlurPref = modernSidebarBlurPref,
                         discoverLocation = discoverLocation,
                     )
+                }
+                val layoutAndFeaturesFlow = combine(
+                    layoutFeaturesBaseFlow,
+                    layoutPreferenceDataStore.selectedLayout
+                ) { layoutPrefs, selectedLayout ->
+                    layoutPrefs.copy(selectedLayout = selectedLayout)
                 }
                 val extraFeaturesFlow = combine(
                     experienceModeDataStore.addonSetupSkipped,
@@ -555,6 +563,7 @@ open class MainActivity : ComponentActivity() {
                         modernSidebarEnabled = layoutPrefs.modernSidebarEnabled,
                         modernSidebarBlurPref = layoutPrefs.modernSidebarBlurPref,
                         discoverLocation = layoutPrefs.discoverLocation,
+                        selectedLayout = layoutPrefs.selectedLayout,
                         addonSetupSkipped = extraPrefs.addonSetupSkipped,
                         smoothBringIntoViewEnabled = extraPrefs.smoothBringIntoViewEnabled,
                         fastHorizontalNavigationEnabled = extraPrefs.fastHorizontalNavigationEnabled,
@@ -817,6 +826,7 @@ open class MainActivity : ComponentActivity() {
                     } else {
                     val sidebarCollapsed = mainUiPrefs.sidebarCollapsed
                     val modernSidebarEnabled = mainUiPrefs.modernSidebarEnabled
+                    val cinemaLayout = mainUiPrefs.selectedLayout == HomeLayout.CINEMA
                     val modernSidebarBlurEnabled =
                         mainUiPrefs.modernSidebarBlurPref && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
                     val hideBuiltInHeadersForFloatingPill = modernSidebarEnabled && !sidebarCollapsed
@@ -1116,7 +1126,7 @@ open class MainActivity : ComponentActivity() {
                             hasSelectedProfileThisSession = false
                         }
                         Box(modifier = Modifier.fillMaxSize()) {
-                            if (modernSidebarEnabled) {
+                            if (modernSidebarEnabled && !cinemaLayout) {
                                 ModernSidebarScaffold(
                                     longPressBackHeld = longPressBackHeld,
                                     navController = navController,
@@ -1137,7 +1147,7 @@ open class MainActivity : ComponentActivity() {
                                     onNavigate = { optimisticRoute = it },
                                     onExitApp = handleExitApp
                                 )
-                            } else {
+                            } else if (!cinemaLayout) {
                                 LegacySidebarScaffold(
                                     longPressBackHeld = longPressBackHeld,
                                     navController = navController,

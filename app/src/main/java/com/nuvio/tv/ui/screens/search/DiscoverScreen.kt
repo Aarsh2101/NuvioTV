@@ -43,6 +43,8 @@ fun DiscoverScreen(
     initialContentType: String? = null,
     lockContentType: Boolean = false,
     forceDiscoverEnabled: Boolean = false,
+    /** Enables the Cinema-only compact header and collapse-on-grid-focus behavior. */
+    cinemaBrowse: Boolean = false,
     contentTopPadding: androidx.compose.ui.unit.Dp = NuvioTheme.spacing.lg,
     onNavigateToDetail: (String, String, String) -> Unit
 ) {
@@ -112,6 +114,7 @@ fun DiscoverScreen(
                 showBuiltInHeader = showBuiltInHeader,
                 headerTitle = headerTitle,
                 showTypeFilter = !lockContentType,
+                cinemaBrowse = cinemaBrowse,
                 firstItemFocusRequester = discoverFirstItemFocusRequester,
                 focusedItemIndex = discoverFocusedItemIndex,
                 shouldRestoreFocusedItem = restoreDiscoverFocus,

@@ -22,7 +22,10 @@ fun CinemaBrowseScreen(
             initialContentType = contentType,
             lockContentType = true,
             forceDiscoverEnabled = true,
-            contentTopPadding = 108.dp,
+            // Cinema browse owns a compact, collapsible filter chrome. The regular Discover
+            // route keeps its existing header and controls.
+            cinemaBrowse = true,
+            contentTopPadding = 96.dp,
             onNavigateToDetail = onNavigateToDetail
         )
         CinemaTopNavigation(

@@ -193,9 +193,9 @@ class SearchViewModel @Inject constructor(
         val cornerRadiusDp: Int
     )
 
-    fun ensureDiscoverLoaded() {
+    fun ensureDiscoverLoaded(force: Boolean = false) {
         val state = _uiState.value
-        if (state.discoverLocation == DiscoverLocation.OFF) return
+        if (!force && state.discoverLocation == DiscoverLocation.OFF) return
         if (state.discoverInitialized || state.discoverLoading) return
         viewModelScope.launch { loadDiscoverCatalogs() }
     }

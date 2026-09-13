@@ -417,6 +417,7 @@ fun HomeScreen(
 
         if (uiState.homeLayout == HomeLayout.CINEMA) {
             CinemaTopNavigation(
+                selectedRoute = "home",
                 onNavigate = onNavigateToRoute,
                 modifier = Modifier.align(Alignment.TopCenter)
             )

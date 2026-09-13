@@ -36,6 +36,7 @@ import com.nuvio.tv.ui.screens.player.PlayerExitReason
 import com.nuvio.tv.ui.screens.player.PlayerScreen
 import com.nuvio.tv.ui.screens.player.PostPlayRecommendation
 import com.nuvio.tv.ui.screens.plugin.PluginScreen
+import com.nuvio.tv.ui.screens.search.CinemaBrowseScreen
 import com.nuvio.tv.ui.screens.search.DiscoverScreen
 import com.nuvio.tv.ui.screens.search.SearchScreen
 import com.nuvio.tv.ui.screens.settings.AboutScreen
@@ -1146,6 +1147,40 @@ private fun PlaybackNavHost(
                     )
                 },
                 onOpenDiscover = { navController.navigate(Screen.Discover.route) }
+            )
+        }
+
+        composable(Screen.CinemaMovies.route) {
+            CinemaBrowseScreen(
+                contentType = "movie",
+                title = context.getString(R.string.nav_movies),
+                selectedRoute = Screen.CinemaMovies.route,
+                onNavigateToRoute = { route ->
+                    navController.navigate(route) { launchSingleTop = true }
+                },
+                onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
+                    val heroBackdrop = HeroBackdropState.consumeAndClear()
+                    navController.navigate(
+                        Screen.Detail.createRoute(itemId, itemType, addonBaseUrl, heroBackdropUrl = heroBackdrop)
+                    )
+                }
+            )
+        }
+
+        composable(Screen.CinemaShows.route) {
+            CinemaBrowseScreen(
+                contentType = "series",
+                title = context.getString(R.string.nav_tv_shows),
+                selectedRoute = Screen.CinemaShows.route,
+                onNavigateToRoute = { route ->
+                    navController.navigate(route) { launchSingleTop = true }
+                },
+                onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
+                    val heroBackdrop = HeroBackdropState.consumeAndClear()
+                    navController.navigate(
+                        Screen.Detail.createRoute(itemId, itemType, addonBaseUrl, heroBackdropUrl = heroBackdrop)
+                    )
+                }
             )
         }
 

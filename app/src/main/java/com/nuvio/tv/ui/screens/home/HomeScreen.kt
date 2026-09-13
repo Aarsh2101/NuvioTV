@@ -46,6 +46,7 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.domain.model.HomeLayout
+import com.nuvio.tv.domain.model.isModernFamily
 import com.nuvio.tv.domain.model.LibraryListTab
 import com.nuvio.tv.domain.model.localizedTitle
 import com.nuvio.tv.domain.model.LibrarySourceMode
@@ -121,7 +122,7 @@ fun HomeScreen(
     val hasCollectionContent = uiState.homeRows.any { it is HomeRow.CollectionRow }
     val hasHeroContent = uiState.heroItems.isNotEmpty()
     val modernPresentationReady =
-        uiState.homeLayout != HomeLayout.MODERN ||
+        !uiState.homeLayout.isModernFamily ||
             modernPresentation.rows.list.isNotEmpty() ||
             (uiState.heroSectionEnabled && hasHeroContent && !hasCatalogContent && !hasCollectionContent)
     var showHomeContentWithAnimation by rememberSaveable { mutableStateOf(false) }
@@ -133,7 +134,7 @@ fun HomeScreen(
     var posterOptionsTarget by remember { mutableStateOf<HomePosterOptionsTarget?>(null) }
 
     LaunchedEffect(uiState.homeLayout) {
-        if (uiState.homeLayout != HomeLayout.MODERN) {
+        if (!uiState.homeLayout.isModernFamily) {
             HeroBackdropState.update(null)
         }
     }
@@ -394,8 +395,9 @@ fun HomeScreen(
                                 onCatalogItemLongPress = onCatalogItemLongPress
                             )
 
-                            HomeLayout.MODERN -> ModernHomeRoute(
+                            HomeLayout.MODERN, HomeLayout.CINEMA -> ModernHomeRoute(
                                 viewModel = viewModel,
+                                cinemaMode = uiState.homeLayout == HomeLayout.CINEMA,
                                 uiState = uiState,
                                 onNavigateToDetail = onNavigateToDetailStable,
                                 onContinueWatchingClick = onContinueWatchingClickStable,
@@ -630,6 +632,7 @@ private fun GridHomeRoute(
 @Composable
 private fun ModernHomeRoute(
     viewModel: HomeViewModel,
+    cinemaMode: Boolean = false,
     uiState: HomeUiState,
     onNavigateToDetail: (String, String, String) -> Unit,
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit,
@@ -676,6 +679,7 @@ private fun ModernHomeRoute(
     }
     ModernHomeContent(
         uiState = uiState,
+        cinemaMode = cinemaMode,
         modernPresentation = modernPresentation,
         focusState = focusState,
         scrollToTopTrigger = scrollToTopTrigger,

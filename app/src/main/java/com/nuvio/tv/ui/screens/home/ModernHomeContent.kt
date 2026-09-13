@@ -115,6 +115,7 @@ internal fun findRelocatedItemIndex(
 @Composable
 fun ModernHomeContent(
     uiState: HomeUiState,
+    cinemaMode: Boolean = false,
     modernPresentation: ModernHomePresentationState = ModernHomePresentationState(),
     focusState: HomeScreenFocusState,
     enrichingItemId: String? = null,
@@ -148,10 +149,14 @@ fun ModernHomeContent(
     val sidebarExpanded = LocalSidebarExpanded.current
     val isSidebarExpanded = remember(sidebarExpanded) { derivedStateOf { sidebarExpanded } }
     val lifecycleOwner = LocalLifecycleOwner.current
-    val useLandscapePosters = uiState.modernLandscapePostersEnabled
-    val fullScreenBackdrop = uiState.modernHeroFullScreenBackdropEnabled
+    // Cinema mode is an opt-in visual preset: cinematic landscape rails and a
+    // full-bleed Apple-TV-style hero, while keeping trailers disabled by default
+    // so the redesign does not spend playback resources during browsing.
+    val useLandscapePosters = cinemaMode || uiState.modernLandscapePostersEnabled
+    val fullScreenBackdrop = cinemaMode || uiState.modernHeroFullScreenBackdropEnabled
     val trailerPlaybackTarget = uiState.focusedPosterBackdropTrailerPlaybackTarget
     val effectiveAutoplayEnabled =
+        !cinemaMode &&
         uiState.focusedPosterBackdropTrailerEnabled &&
             (useLandscapePosters || uiState.focusedPosterBackdropExpandEnabled)
     val landscapeExpandedCardMode =
@@ -964,7 +969,11 @@ fun ModernHomeContent(
             }
 
             val localDensity = LocalDensity.current
-            val rowsViewportHeightFraction = if (useLandscapePosters) 0.49f else 0.52f
+            val rowsViewportHeightFraction = when {
+                cinemaMode -> 0.46f
+                useLandscapePosters -> 0.49f
+                else -> 0.52f
+            }
             val rowsViewportHeight = remember(screenHeight, rowsViewportHeightFraction) { screenHeight * rowsViewportHeightFraction }
             val rowTitleLineHeight = MaterialTheme.typography.titleMedium.lineHeight
             val rowTitleHeight = remember(rowTitleLineHeight, localDensity) {
@@ -1155,7 +1164,7 @@ fun ModernHomeContent(
                 trailerPreviewUrls = stableTrailerPreviewUrls,
                 trailerPreviewAudioUrls = stableTrailerPreviewAudioUrls,
                 useLandscapePosters = useLandscapePosters,
-                showLabels = uiState.posterLabelsEnabled,
+                showLabels = cinemaMode || uiState.posterLabelsEnabled,
                 posterCardCornerRadius = posterCardCornerRadius,
                 focusedPosterBackdropTrailerMuted = uiState.focusedPosterBackdropTrailerMuted,
                 effectiveExpandEnabled = effectiveExpandEnabled,

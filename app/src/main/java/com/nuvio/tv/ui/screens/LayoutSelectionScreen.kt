@@ -112,6 +112,13 @@ fun LayoutSelectionScreen(
                 )
 
                 LayoutOptionCard(
+                    layout = HomeLayout.CINEMA,
+                    isSelected = selectedLayout == HomeLayout.CINEMA,
+                    onSelect = { selectedLayout = HomeLayout.CINEMA },
+                    modifier = Modifier.weight(1f)
+                )
+
+                LayoutOptionCard(
                     layout = HomeLayout.GRID,
                     isSelected = selectedLayout == HomeLayout.GRID,
                     onSelect = { selectedLayout = HomeLayout.GRID },
@@ -214,7 +221,7 @@ private fun LayoutOptionCard(
                         HomeLayout.GRID -> GridLayoutPreview(
                             modifier = Modifier.fillMaxSize()
                         )
-                        HomeLayout.MODERN -> ModernLayoutPreview(
+                        HomeLayout.MODERN, HomeLayout.CINEMA -> ModernLayoutPreview(
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -227,6 +234,7 @@ private fun LayoutOptionCard(
                         HomeLayout.CLASSIC -> stringResource(R.string.layout_classic)
                         HomeLayout.GRID -> stringResource(R.string.layout_grid)
                         HomeLayout.MODERN -> stringResource(R.string.layout_modern)
+                        HomeLayout.CINEMA -> stringResource(R.string.layout_cinema)
                     },
                     style = MaterialTheme.typography.titleLarge,
                     color = if (isSelected || isFocused) NuvioTheme.colors.TextPrimary else NuvioTheme.colors.TextSecondary
@@ -239,6 +247,7 @@ private fun LayoutOptionCard(
                     HomeLayout.CLASSIC -> stringResource(R.string.layout_classic_desc)
                     HomeLayout.GRID -> stringResource(R.string.layout_grid_desc)
                     HomeLayout.MODERN -> stringResource(R.string.layout_modern_desc)
+                    HomeLayout.CINEMA -> stringResource(R.string.layout_cinema_desc)
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = NuvioTheme.colors.TextTertiary

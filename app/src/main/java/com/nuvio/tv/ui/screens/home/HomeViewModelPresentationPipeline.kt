@@ -10,6 +10,7 @@ import com.nuvio.tv.core.tmdb.TmdbEnrichment
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
 import com.nuvio.tv.domain.model.HomeImdbRatingsVisibility
 import com.nuvio.tv.domain.model.HomeLayout
+import com.nuvio.tv.domain.model.isModernFamily
 import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.TmdbSettings
@@ -191,7 +192,7 @@ internal fun HomeViewModel.observeLayoutPreferencesPipeline() {
             .distinctUntilChanged()
             .debounce(300)
             .collectLatest { prefs ->
-                val effectivePosterLabelsEnabled = if (prefs.layout == HomeLayout.MODERN) {
+                val effectivePosterLabelsEnabled = if (prefs.layout.isModernFamily) {
                     false
                 } else {
                     prefs.posterLabelsEnabled
@@ -666,7 +667,7 @@ internal fun HomeViewModel.preloadAdjacentItemPipeline(item: MetaPreview) {
     adjacentItemPrefetchJob?.cancel()
     adjacentItemPrefetchJob = viewModelScope.launch(Dispatchers.IO) {
         val tmdbEnabledForCurrentLayout = currentTmdbSettings.enabled &&
-            (_uiState.value.homeLayout != HomeLayout.MODERN || currentTmdbSettings.modernHomeEnabled)
+            (!_uiState.value.homeLayout.isModernFamily || currentTmdbSettings.modernHomeEnabled)
         delay(HomeViewModel.EXTERNAL_META_PREFETCH_ADJACENT_DEBOUNCE_MS)
         if (pendingAdjacentPrefetchItemId != item.id) return@launch
 
@@ -750,7 +751,7 @@ private fun HomeViewModel.applyEnrichmentToDisplayedRows(
     transform: (MetaPreview) -> MetaPreview
 ) {
     _uiState.update { state ->
-        if (state.homeLayout == HomeLayout.MODERN) return@update state
+        if (state.homeLayout.isModernFamily) return@update state
         var changed = false
 
         fun patch(row: com.nuvio.tv.domain.model.CatalogRow): com.nuvio.tv.domain.model.CatalogRow {
@@ -798,7 +799,7 @@ private fun HomeViewModel.applyEnrichmentToDisplayedRows(
 }
 
 private fun HomeViewModel.updateCatalogItemWithTmdb(itemId: String, enrichment: TmdbEnrichment) {
-    val isModernLayout = _uiState.value.homeLayout == HomeLayout.MODERN
+    val isModernLayout = _uiState.value.homeLayout.isModernFamily
     fun mergeItem(currentItem: MetaPreview): MetaPreview {
         var merged = currentItem
         if (currentTmdbSettings.useBasicInfo) {

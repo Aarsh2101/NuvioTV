@@ -9,6 +9,7 @@ import com.nuvio.tv.domain.model.CatalogDescriptor
 import com.nuvio.tv.domain.model.CatalogRow
 import com.nuvio.tv.domain.model.Collection
 import com.nuvio.tv.domain.model.HomeLayout
+import com.nuvio.tv.domain.model.isModernFamily
 import com.nuvio.tv.domain.model.catalogRowStableKey
 import com.nuvio.tv.domain.model.enabledAddons
 import com.nuvio.tv.domain.model.legacyKey
@@ -111,7 +112,7 @@ internal fun HomeViewModel.observeTmdbSettingsPipeline() {
                 val releaseDatesChanged = currentTmdbSettings.useReleaseDates != settings.useReleaseDates
                 currentTmdbSettings = settings
                 val tmdbEnabledForLayout = settings.enabled &&
-                    (_uiState.value.homeLayout != HomeLayout.MODERN || settings.modernHomeEnabled)
+                    (!_uiState.value.homeLayout.isModernFamily || settings.modernHomeEnabled)
                 val enrichEnabled = tmdbEnabledForLayout || externalMetaPrefetchEnabled
                 _uiState.update { it.copy(heroEnrichmentEnabled = enrichEnabled) }
                 if (languageChanged || releaseDatesChanged) {
@@ -675,7 +676,7 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
         }
 
         val computedDisplayRows = orderedRows.map { row ->
-            val shouldKeepFullRowInModern = currentLayout == HomeLayout.MODERN
+            val shouldKeepFullRowInModern = currentLayout.isModernFamily
             val gridTruncateLimit = 24
             if (row.items.size > gridTruncateLimit && !shouldKeepFullRowInModern) {
                 val key = row.legacyKey()
@@ -740,7 +741,7 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
                     } else {
                         val placeholder = placeholdersByKey[key]
                         if (placeholder != null) {
-                        if (currentLayout == HomeLayout.MODERN) {
+                        if (currentLayout.isModernFamily) {
                             add(HomeRow.PlaceholderCatalog(
                                 catalogKey = placeholder.catalogKey,
                                 stableCatalogKey = catalogRowStableKey(
@@ -888,7 +889,7 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
 
     val tmdbSettings = currentTmdbSettings
     val tmdbEnabledForCurrentLayout = tmdbSettings.enabled &&
-        (currentLayout != HomeLayout.MODERN || tmdbSettings.modernHomeEnabled)
+        (!currentLayout.isModernFamily || tmdbSettings.modernHomeEnabled)
     val shouldUseEnrichedHeroItems = tmdbEnabledForCurrentLayout &&
         (tmdbSettings.useArtwork || tmdbSettings.useBasicInfo || tmdbSettings.useDetails || tmdbSettings.useReleaseDates)
 
@@ -1144,7 +1145,7 @@ internal fun HomeViewModel.mergeRefreshedCatalogRow(
         // only shifts along and its node is reused. That holds in the modern layout, which keeps
         // the whole row; the others cut it at a fixed length, where the focused card can be
         // pushed past the cut and no key brings back a card that has left the list.
-        if (!requestedByUser && rowHasFocus && _uiState.value.homeLayout != HomeLayout.MODERN) {
+        if (!requestedByUser && rowHasFocus && !_uiState.value.homeLayout.isModernFamily) {
             return true
         }
         val shiftedSkip = if (current.supportsSkip && current.nextSkip > 0) {

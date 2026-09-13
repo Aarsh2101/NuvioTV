@@ -35,6 +35,67 @@ internal object PlayerPlaybackNetworking {
         }
     }
 
+    private val redirectCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    fun recordRedirect(originalUrl: String, finalUrl: String) {
+        if (originalUrl.isNotBlank() && finalUrl.isNotBlank() && originalUrl != finalUrl) {
+            redirectCache[originalUrl] = finalUrl
+        }
+    }
+
+    fun recordRedirect(originalUri: android.net.Uri, finalUri: android.net.Uri) {
+        recordRedirect(originalUri.toString(), finalUri.toString())
+    }
+
+    fun getResolvedUrl(url: String): String = redirectCache[url] ?: url
+
+    fun getResolvedUri(uri: android.net.Uri): android.net.Uri {
+        val cached = redirectCache[uri.toString()] ?: return uri
+        return try {
+            android.net.Uri.parse(cached)
+        } catch (_: Exception) {
+            uri
+        }
+    }
+
+    private fun createRedirectAndRateLimitInterceptor(): okhttp3.Interceptor = okhttp3.Interceptor { chain ->
+        val originalRequest = chain.request()
+        val originalUrlString = originalRequest.url.toString()
+        val resolvedUrlString = redirectCache[originalUrlString]
+        val requestToExecute = if (resolvedUrlString != null && resolvedUrlString != originalUrlString) {
+            try {
+                originalRequest.newBuilder()
+                    .url(resolvedUrlString)
+                    .build()
+            } catch (_: Exception) {
+                originalRequest
+            }
+        } else {
+            originalRequest
+        }
+
+        var response = chain.proceed(requestToExecute)
+
+        var retries = 0
+        while (response.code == 429 && retries < 3) {
+            response.close()
+            retries++
+            try {
+                Thread.sleep(750L * retries)
+            } catch (_: InterruptedException) {
+                break
+            }
+            response = chain.proceed(requestToExecute)
+        }
+
+        val finalUrlString = response.request.url.toString()
+        if (finalUrlString != originalUrlString && (response.isSuccessful || response.code == 206)) {
+            redirectCache[originalUrlString] = finalUrlString
+        }
+
+        response
+    }
+
     /**
      * Fallback OkHttpClient equipped with trust-all SSL configuration for self-signed
      * or untrusted local media servers (e.g. self-signed WebDAV / Plex / Jellyfin).
@@ -56,6 +117,7 @@ internal object PlayerPlaybackNetworking {
             .followRedirects(true)
             .followSslRedirects(true)
             .retryOnConnectionFailure(true)
+            .addInterceptor(createRedirectAndRateLimitInterceptor())
             .build()
     }
 
@@ -79,6 +141,7 @@ internal object PlayerPlaybackNetworking {
             .followRedirects(true)
             .followSslRedirects(true)
             .retryOnConnectionFailure(true)
+            .addInterceptor(createRedirectAndRateLimitInterceptor())
             .addInterceptor { chain ->
                 val request = chain.request()
                 try {

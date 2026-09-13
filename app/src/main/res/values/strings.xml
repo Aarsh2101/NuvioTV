@@ -575,8 +575,8 @@
     <string name="advanced_section_diagnostics">Diagnostics</string>
     <string name="advanced_sentry_reports">Sentry crash reports</string>
     <string name="advanced_sentry_reports_subtitle">Send crash and ANR reports with safe context. On by default.</string>
-    <string name="advanced_playback_issue_reports">Playback issue reports</string>
-    <string name="advanced_playback_issue_reports_subtitle">Show report buttons during playback, long loading, and playback errors</string>
+    <string name="advanced_playback_issue_reports">Playback diagnostics</string>
+    <string name="advanced_playback_issue_reports_subtitle">Send detailed playback snapshots every 30 seconds to the configured diagnostics server; also show manual report buttons</string>
     <string name="advanced_player_stats_hud">Playback stats overlay</string>
     <string name="advanced_player_stats_hud_subtitle">Show a button in stream info to toggle live cpu, memory, buffer, bitrate and thermal readings during playback</string>
     <string name="sentry_enable_dialog_title">Turn on crash reports?</string>

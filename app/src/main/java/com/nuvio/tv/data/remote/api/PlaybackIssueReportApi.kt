@@ -9,6 +9,7 @@ import retrofit2.http.POST
 interface PlaybackIssueReportApi {
     @POST("api/playback-reports")
     suspend fun createPlaybackIssueReport(
+        @retrofit2.http.Header("Authorization") authorization: String?,
         @Body body: PlaybackIssueReportRequestDto
     ): Response<PlaybackIssueReportResponseDto>
 }

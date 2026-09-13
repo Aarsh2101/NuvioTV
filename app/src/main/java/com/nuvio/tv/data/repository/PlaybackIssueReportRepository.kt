@@ -195,7 +195,14 @@ class PlaybackIssueReportRepository @Inject constructor(
         if (BuildConfig.PLAYBACK_REPORTS_BASE_URL.isBlank()) {
             error("Playback report endpoint is not configured")
         }
-        val response = playbackIssueReportApi.createPlaybackIssueReport(input.toDto())
+        val authorization = BuildConfig.PLAYBACK_REPORTS_API_TOKEN
+            .trim()
+            .takeIf { it.isNotBlank() }
+            ?.let { "Bearer $it" }
+        val response = playbackIssueReportApi.createPlaybackIssueReport(
+            authorization = authorization,
+            body = input.toDto()
+        )
         if (!response.isSuccessful) {
             error("Playback report upload failed: HTTP ${response.code()}")
         }
@@ -649,6 +656,7 @@ class PlaybackIssueReportRepository @Inject constructor(
         replace('\n', ' ')
             .replace('\r', ' ')
             .trim()
+            .redactSensitiveText()
             .takeIf { it.isNotBlank() }
             ?.limit(maxLength)
 

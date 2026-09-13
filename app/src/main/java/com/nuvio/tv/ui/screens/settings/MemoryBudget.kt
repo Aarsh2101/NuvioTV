@@ -16,7 +16,7 @@ object MemoryBudget {
     // headroom for codec/surface/UI; high-RAM devices can dedicate more to buffering.
     private const val LOW_HEAP_RATIO = 0.65
     private const val HIGH_HEAP_RATIO = 0.85
-    private const val HIGH_HEAP_THRESHOLD_MB = 512L
+    private const val HIGH_HEAP_THRESHOLD_MB = 384L
     // The buffer allocator is on the Java heap; on low-RAM reserve a slice for the UI/decoder/caches
     // and give the rest to the buffer (a flat % of max heap overcommits and starves them).
     private const val LOW_HEAP_RESERVE_MB = 210L

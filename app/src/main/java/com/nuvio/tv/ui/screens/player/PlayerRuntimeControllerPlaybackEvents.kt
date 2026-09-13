@@ -33,6 +33,7 @@ internal const val AUDIO_DELAY_MIN_MS = -3000
 internal const val AUDIO_DELAY_MAX_MS = 3000
 internal const val AUDIO_DELAY_STEP_MS = 25
 internal const val WATCH_PROGRESS_SAVE_INTERVAL_MS = 90_000L
+private const val PLAYBACK_TELEMETRY_INTERVAL_MS = 30_000L
 
 internal fun PlayerRuntimeController.applyAudioDelay(
     delayMs: Int,
@@ -176,7 +177,28 @@ internal fun shouldTreatAsNaturalPlaybackCompletion(
 /** Streams shorter than ~2:01 are treated as error/placeholder clips, not real episodes. */
 internal fun isShortPlaceholderDuration(duration: Long): Boolean = duration in 1..120_999L
 
+internal fun PlayerRuntimeController.startPlaybackTelemetry() {
+    playbackTelemetryJob?.cancel()
+    playbackTelemetryJob = null
+    if (!_uiState.value.playbackIssueReportsEnabled) return
+
+    playbackTelemetryJob = scope.launch {
+        while (isActive) {
+            delay(PLAYBACK_TELEMETRY_INTERVAL_MS)
+            if (hasRenderedFirstFrame) {
+                submitPlaybackIssueReport(automatic = true)
+            }
+        }
+    }
+}
+
+internal fun PlayerRuntimeController.stopPlaybackTelemetry() {
+    playbackTelemetryJob?.cancel()
+    playbackTelemetryJob = null
+}
+
 internal fun PlayerRuntimeController.startProgressUpdates() {
+    startPlaybackTelemetry()
     progressJob?.cancel()
     progressJob = scope.launch {
         while (isActive) {
@@ -370,6 +392,7 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
 internal fun PlayerRuntimeController.stopProgressUpdates() {
     progressJob?.cancel()
     progressJob = null
+    stopPlaybackTelemetry()
 }
 
 internal fun PlayerRuntimeController.startWatchProgressSaving() {
@@ -387,12 +410,13 @@ internal fun PlayerRuntimeController.stopWatchProgressSaving() {
     watchProgressSaveJob = null
 }
 
-internal fun PlayerRuntimeController.submitPlaybackIssueReport() {
+internal fun PlayerRuntimeController.submitPlaybackIssueReport(automatic: Boolean = false) {
     val state = _uiState.value
     if (!state.playbackIssueReportsEnabled) return
-    if (state.playbackIssueReportStatus == PlaybackIssueReportStatus.Sending ||
-        state.playbackIssueReportStatus == PlaybackIssueReportStatus.Sent
+    if (!automatic && (state.playbackIssueReportStatus == PlaybackIssueReportStatus.Sending ||
+        state.playbackIssueReportStatus == PlaybackIssueReportStatus.Sent)
     ) return
+    if (automatic && !playbackTelemetryUploadInFlight.compareAndSet(false, true)) return
     val timeline = _playbackTimeline.value
     val diagnostics = lastPlaybackDiagnosticsForReport.takeIf { it.timestampMs > 0L }
         ?: LastPlaybackDiagnostics(
@@ -417,7 +441,9 @@ internal fun PlayerRuntimeController.submitPlaybackIssueReport() {
         hasRenderedFirstFrame = hasRenderedFirstFrame,
         error = state.error,
     )
-    val loadingInput = buildPlaybackIssueLoadingInput(reportReason)
+    val loadingInput = buildPlaybackIssueLoadingInput(reportReason).let {
+        if (automatic) it.copy(reportReason = "automatic_periodic") else it
+    }
     val playbackAnalyticsInput = playbackAnalyticsDiagnostics.snapshot(
         player = _exoPlayer,
         hasRenderedFirstFrame = hasRenderedFirstFrame,
@@ -457,39 +483,57 @@ internal fun PlayerRuntimeController.submitPlaybackIssueReport() {
         playbackAnalytics = playbackAnalyticsInput
     )
 
-    val requestVersion = playbackIssueReportRequestVersion.incrementAndGet()
-    _uiState.update {
-        it.copy(
-            playbackIssueReportStatus = PlaybackIssueReportStatus.Sending,
-            playbackIssueReportId = null,
-            playbackIssueReportError = null
-        )
+    val requestVersion = if (automatic) {
+        playbackIssueReportRequestVersion.get()
+    } else {
+        playbackIssueReportRequestVersion.incrementAndGet()
+    }
+    if (!automatic) {
+        _uiState.update {
+            it.copy(
+                playbackIssueReportStatus = PlaybackIssueReportStatus.Sending,
+                playbackIssueReportId = null,
+                playbackIssueReportError = null
+            )
+        }
     }
     scope.launch {
-        val result = playbackIssueReportRepository.submit(input)
-        _uiState.update { current ->
-            if (playbackIssueReportRequestVersion.get() != requestVersion ||
-                current.playbackIssueReportStatus != PlaybackIssueReportStatus.Sending
-            ) {
-                current
+        try {
+            val result = playbackIssueReportRepository.submit(input)
+            if (automatic) {
+                result.onSuccess { reportId ->
+                    Log.i(PlayerRuntimeController.TAG, "Automatic playback diagnostics uploaded: $reportId")
+                }.onFailure { error ->
+                    Log.w(PlayerRuntimeController.TAG, "Automatic playback diagnostics upload failed", error)
+                }
             } else {
-                result.fold(
-                    onSuccess = { reportId ->
-                        current.copy(
-                            playbackIssueReportStatus = PlaybackIssueReportStatus.Sent,
-                            playbackIssueReportId = reportId,
-                            playbackIssueReportError = null
-                        )
-                    },
-                    onFailure = { error ->
-                        current.copy(
-                            playbackIssueReportStatus = PlaybackIssueReportStatus.Failed,
-                            playbackIssueReportId = null,
-                            playbackIssueReportError = error.message ?: "Unable to send report"
+                _uiState.update { current ->
+                    if (playbackIssueReportRequestVersion.get() != requestVersion ||
+                        current.playbackIssueReportStatus != PlaybackIssueReportStatus.Sending
+                    ) {
+                        current
+                    } else {
+                        result.fold(
+                            onSuccess = { reportId ->
+                                current.copy(
+                                    playbackIssueReportStatus = PlaybackIssueReportStatus.Sent,
+                                    playbackIssueReportId = reportId,
+                                    playbackIssueReportError = null
+                                )
+                            },
+                            onFailure = { error ->
+                                current.copy(
+                                    playbackIssueReportStatus = PlaybackIssueReportStatus.Failed,
+                                    playbackIssueReportId = null,
+                                    playbackIssueReportError = error.message ?: "Unable to send report"
+                                )
+                            }
                         )
                     }
-                )
+                }
             }
+        } finally {
+            if (automatic) playbackTelemetryUploadInFlight.set(false)
         }
     }
 }
@@ -721,7 +765,7 @@ internal fun PlayerRuntimeController.saveWatchProgressInternal(position: Long, d
         progressPercent = fallbackPercent
     )
 
-    scope.launch(kotlinx.coroutines.NonCancellable) {
+    scope.launch(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
         val effectiveContentId = watchProgressRepository.normalizeParentContentId(
             parentContentId = progress.contentId,
             videoId = progress.videoId,
@@ -1153,6 +1197,8 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
     }
     when (event) {
         PlayerEvent.OnPlayPause -> {
+            val t0 = android.os.SystemClock.elapsedRealtime()
+            val action = if (_exoPlayer?.isPlaying == true) "PAUSE" else "RESUME"
             if (isUsingMpvEngine()) {
                 val playing = isPlaybackCurrentlyPlaying()
                 if (playing) {
@@ -1181,10 +1227,14 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
                         userPausedManually = false
                         cancelPauseOverlay()
                         player.play()
+                        scheduleHideControls()
                     }
                 }
             }
             showControlsTemporarily()
+            val elapsed = android.os.SystemClock.elapsedRealtime() - t0
+            Log.i("PERF_PLAY_PAUSE", "action=$action elapsed=${elapsed}ms")
+            logResourceUsage("toggle_play_pause")
         }
         PlayerEvent.OnSeekForward -> {
             if (_playbackTimeline.value.isLive) return
@@ -1857,5 +1907,22 @@ private fun formatTorrentSpeed(context: android.content.Context, bytesPerSec: Lo
         bytesPerSec >= 1_048_576 -> context.getString(R.string.unit_speed_mb_s, String.format("%.1f", bytesPerSec / 1_048_576.0))
         bytesPerSec >= 1_024 -> context.getString(R.string.unit_speed_kb_s, String.format("%.0f", bytesPerSec / 1_024.0))
         else -> context.getString(R.string.unit_speed_b_s, bytesPerSec)
+    }
+}
+
+internal fun PlayerRuntimeController.logResourceUsage(trigger: String) {
+    runCatching {
+        val rt = Runtime.getRuntime()
+        val jvmUsedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)
+        val jvmMaxMb = rt.maxMemory() / (1024 * 1024)
+        val nativeAllocMb = android.os.Debug.getNativeHeapAllocatedSize() / (1024 * 1024)
+        val memInfo = android.app.ActivityManager.MemoryInfo()
+        (context.getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager)?.getMemoryInfo(memInfo)
+        val availMemMb = memInfo.availMem / (1024 * 1024)
+        val totalMemMb = memInfo.totalMem / (1024 * 1024)
+        val currentPos = currentPlaybackPositionMs() ?: 0L
+        val bufferedPos = _exoPlayer?.bufferedPosition ?: _playbackTimeline.value.bufferedPosition
+        val bufferAheadMs = (bufferedPos - currentPos).coerceAtLeast(0L)
+        Log.i("RESOURCE_MONITOR", "[$trigger] jvm=${jvmUsedMb}/${jvmMaxMb}MB native=${nativeAllocMb}MB sysFree=${availMemMb}/${totalMemMb}MB lowMem=${memInfo.lowMemory} bufAhead=${bufferAheadMs / 1000}s")
     }
 }

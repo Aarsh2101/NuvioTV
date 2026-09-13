@@ -62,6 +62,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.nuvio.tv.core.util.withAppLocale
 import java.lang.ref.WeakReference
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 class PlayerRuntimeController(
@@ -366,6 +367,9 @@ class PlayerRuntimeController(
     internal var debridResolveJob: Job? = null
     internal var stillWatchingPromptJob: Job? = null
     internal var startupLoadingReportJob: Job? = null
+    /** Periodic, opt-in diagnostic snapshots for the temporary local collector. */
+    internal var playbackTelemetryJob: Job? = null
+    internal val playbackTelemetryUploadInFlight = AtomicBoolean(false)
     internal var sourceStreamsJob: Job? = null
     internal var sourceBadgeJob: Job? = null
     internal var sourceBadgedAddonNames: Set<String> = emptySet()
@@ -671,6 +675,7 @@ class PlayerRuntimeController(
         releasePlayer()
         stopTorrentStream()
         startupLoadingReportJob?.cancel()
+        playbackTelemetryJob?.cancel()
         vodTelemetryJob?.cancel()
         mediaSourceFactory.shutdown()
         sourceChipErrorDismissJob?.cancel()

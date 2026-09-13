@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
+import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.player.LastPlaybackDiagnostics
 import kotlinx.coroutines.CoroutineScope
@@ -167,14 +168,12 @@ data class BufferSettings(
     val retainBackBufferFromKeyframe: Boolean = false
 ) {
     companion object {
-        const val DEFAULT_MIN_BUFFER_MS = 15_000
-        const val DEFAULT_MAX_BUFFER_MS = 45_000
-        const val DEFAULT_BUFFER_FOR_PLAYBACK_MS = 5_000
-        const val DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 3_000
-        const val DEFAULT_TARGET_BUFFER_SIZE_MB: Int = 150
-        // Media3 reserves additional bytes for back buffer as a fraction of
-        // targetBufferBytes. 15s default keeps peak heap within Fire TV class
-        // limits while still covering 3 default 5s seek-back presses.
+        const val DEFAULT_MIN_BUFFER_MS = 20_000
+        const val DEFAULT_MAX_BUFFER_MS = 60_000
+        const val DEFAULT_BUFFER_FOR_PLAYBACK_MS = 2_500
+        const val DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 2_500
+        const val DEFAULT_TARGET_BUFFER_SIZE_MB: Int = 100
+        // Retain 15 seconds back buffer in RAM for instant rewind
         const val DEFAULT_BACK_BUFFER_DURATION_MS = 15_000
     }
 }
@@ -352,20 +351,20 @@ data class PlayerSettings(
         const val DEFAULT_BUFFER_BUDGET_MANAGED = true
         const val DEFAULT_ALLOW_LARGE_TARGET_BUFFER = false
         const val LARGE_TARGET_BUFFER_MAX_MB = 2048
-        const val DEFAULT_VOD_CACHE_ENABLED = false
-        const val DEFAULT_VOD_CACHE_SIZE_MB = 500
+        const val DEFAULT_VOD_CACHE_ENABLED = true
+        const val DEFAULT_VOD_CACHE_SIZE_MB = 2048
         const val MIN_VOD_CACHE_SIZE_MB = 100
         const val MAX_VOD_CACHE_SIZE_MB = 65_536
         val DEFAULT_VOD_CACHE_SIZE_MODE: VodCacheSizeMode = VodCacheSizeMode.AUTO
-        const val DEFAULT_USE_PARALLEL_CONNECTIONS = false
+        const val DEFAULT_USE_PARALLEL_CONNECTIONS = true
         const val DEFAULT_PARALLEL_CONNECTION_COUNT = 2
-        const val DEFAULT_PARALLEL_CHUNK_SIZE_KB = 16 * 1024
+        const val DEFAULT_PARALLEL_CHUNK_SIZE_KB = 32 * 1024
         const val MIN_PARALLEL_CONNECTION_COUNT = 2
         const val MAX_PARALLEL_CONNECTION_COUNT = 4
         const val MIN_PARALLEL_CHUNK_SIZE_KB = 256
         const val MAX_PARALLEL_CHUNK_SIZE_KB = 128 * 1024
-        const val DEFAULT_ENABLE_HTTP2 = false
-        const val DEFAULT_NUVIO_PERFORMANCE_MODE_ENABLED = false
+        const val DEFAULT_ENABLE_HTTP2 = true
+        const val DEFAULT_NUVIO_PERFORMANCE_MODE_ENABLED = true
     }
 }
 
@@ -606,6 +605,8 @@ class PlayerSettingsDataStore @Inject constructor(
     private val migrationAfterRebufferLoweredDoneKey = booleanPreferencesKey("migration_after_rebuffer_lowered_done")
     private val migrationBackBufferDurationReducedDoneKey = booleanPreferencesKey("migration_back_buffer_duration_reduced_done")
     private val migrationTargetBufferSizeReducedDoneKey = booleanPreferencesKey("migration_target_buffer_size_reduced_done")
+    private val migrationTvOptimalStreamingDefaultsDoneKey = booleanPreferencesKey("migration_tv_optimal_streaming_defaults_v1")
+    private val migrationTvOptimalStreamingDefaultsV3Key = booleanPreferencesKey("migration_tv_optimal_streaming_defaults_v3")
     init {
         ioScope.launch {
             profileManager.activeProfileId.collect { pid ->
@@ -616,6 +617,13 @@ class PlayerSettingsDataStore @Inject constructor(
 
     private suspend fun migrateProfile(profileId: Int) {
         factory.get(profileId, FEATURE).edit { prefs ->
+                if (!BuildConfig.PLAYBACK_DIAGNOSTICS_ENABLED) {
+                    // Remove temporary investigation state, including a toggle
+                    // persisted by an earlier diagnostics-enabled build.
+                    prefs.remove(playbackIssueReportsEnabledKey)
+                    prefs.remove(lastPlaybackDiagnosticsKey)
+                }
+
                 val loadControlMigrated = prefs[migrationLoadControlDefaultsAlignedDoneKey] ?: false
                 if (!loadControlMigrated) {
                     val currentMin = prefs[minBufferMsKey]
@@ -733,6 +741,35 @@ class PlayerSettingsDataStore @Inject constructor(
                         prefs[targetBufferSizeMbKey] = BufferSettings.DEFAULT_TARGET_BUFFER_SIZE_MB
                     }
                     prefs[migrationTargetBufferSizeReducedDoneKey] = true
+                }
+
+                val tvOptimalStreamingDone = prefs[migrationTvOptimalStreamingDefaultsDoneKey] ?: false
+                if (!tvOptimalStreamingDone) {
+                    prefs[useParallelConnectionsKey] = true
+                    prefs[parallelConnectionCountKey] = 2
+                    prefs[parallelChunkSizeKbKey] = 32 * 1024
+                    prefs[enableHttp2Key] = true
+                    prefs[nuvioPerformanceModeEnabledKey] = true
+                    prefs[vodCacheEnabledKey] = true
+                    prefs[vodCacheSizeMbKey] = 2048
+                    prefs[bufferEngineEnabledKey] = true
+                    prefs[parallelNetworkEnabledKey] = true
+                    prefs[minBufferMsKey] = 30_000
+                    prefs[maxBufferMsKey] = 120_000
+                    prefs[bufferForPlaybackMsKey] = 3_000
+                    prefs[targetBufferSizeMbKey] = 250
+                    prefs[backBufferDurationMsKey] = 30_000
+                    prefs[migrationTvOptimalStreamingDefaultsDoneKey] = true
+                }
+
+                val tvOptimalStreamingV3Done = prefs[migrationTvOptimalStreamingDefaultsV3Key] ?: false
+                if (!tvOptimalStreamingV3Done) {
+                    prefs[minBufferMsKey] = 20_000
+                    prefs[maxBufferMsKey] = 60_000
+                    prefs[bufferForPlaybackMsKey] = 2_500
+                    prefs[targetBufferSizeMbKey] = 100
+                    prefs[backBufferDurationMsKey] = 15_000
+                    prefs[migrationTvOptimalStreamingDefaultsV3Key] = true
                 }
 
                 val min = prefs[minBufferMsKey]
@@ -857,7 +894,10 @@ class PlayerSettingsDataStore @Inject constructor(
                     ?.let(::normalizeSecondaryAudioLanguageCode),
                 loadingOverlayEnabled = prefs[loadingOverlayEnabledKey] ?: true,
                 showPlayerLoadingStatus = prefs[showPlayerLoadingStatusKey] ?: true,
-                playbackIssueReportsEnabled = prefs[playbackIssueReportsEnabledKey] ?: false,
+                // A build-level gate prevents a previously enabled temporary
+                // collector toggle from sending reports after the investigation.
+                playbackIssueReportsEnabled = BuildConfig.PLAYBACK_DIAGNOSTICS_ENABLED &&
+                    (prefs[playbackIssueReportsEnabledKey] ?: true),
                 pauseOverlayEnabled = prefs[pauseOverlayEnabledKey] ?: true,
                 osdClockEnabled = prefs[osdClockEnabledKey] ?: true,
                 skipIntroEnabled = prefs[skipIntroEnabledKey] ?: true,
@@ -942,13 +982,13 @@ class PlayerSettingsDataStore @Inject constructor(
                 } ?: PlayerSettings.DEFAULT_VOD_CACHE_SIZE_MODE,
                 vodCacheSizeMb = (prefs[vodCacheSizeMbKey] ?: PlayerSettings.DEFAULT_VOD_CACHE_SIZE_MB).coerceIn(PlayerSettings.MIN_VOD_CACHE_SIZE_MB, PlayerSettings.MAX_VOD_CACHE_SIZE_MB),
                 useParallelConnections = prefs[useParallelConnectionsKey] ?: PlayerSettings.DEFAULT_USE_PARALLEL_CONNECTIONS,
-                bufferEngineEnabled = prefs[bufferEngineEnabledKey] ?: false,
-                parallelNetworkEnabled = prefs[parallelNetworkEnabledKey] ?: false,
+                bufferEngineEnabled = prefs[bufferEngineEnabledKey] ?: true,
+                parallelNetworkEnabled = prefs[parallelNetworkEnabledKey] ?: true,
                 allowLargeTargetBuffer = prefs[allowLargeTargetBufferKey] ?: PlayerSettings.DEFAULT_ALLOW_LARGE_TARGET_BUFFER,
                 bufferBudgetManaged = prefs[bufferBudgetManagedKey] ?: PlayerSettings.DEFAULT_BUFFER_BUDGET_MANAGED,
                 parallelConnectionCount = run {
                     val isNativeMemory = isNativeMemoryActive(prefs)
-                    val defaultConnectionCount = if (isNativeMemory) 4 else PlayerSettings.DEFAULT_PARALLEL_CONNECTION_COUNT
+                    val defaultConnectionCount = PlayerSettings.DEFAULT_PARALLEL_CONNECTION_COUNT
                     val maxConnectionCount = if (isNativeMemory) 16 else PlayerSettings.MAX_PARALLEL_CONNECTION_COUNT
                     (prefs[parallelConnectionCountKey] ?: defaultConnectionCount).coerceIn(PlayerSettings.MIN_PARALLEL_CONNECTION_COUNT, maxConnectionCount)
                 },
@@ -957,8 +997,7 @@ class PlayerSettingsDataStore @Inject constructor(
                     if (savedKb != null) {
                         savedKb.coerceIn(PlayerSettings.MIN_PARALLEL_CHUNK_SIZE_KB, PlayerSettings.MAX_PARALLEL_CHUNK_SIZE_KB)
                     } else {
-                        val savedMb = (prefs[parallelChunkSizeMbKey] ?: 16).coerceIn(8, 128)
-                        savedMb * 1024
+                        PlayerSettings.DEFAULT_PARALLEL_CHUNK_SIZE_KB
                     }
                 },
                 enableBufferLogs = prefs[enableBufferLogsKey] ?: false,
@@ -1202,7 +1241,8 @@ class PlayerSettingsDataStore @Inject constructor(
 
     suspend fun setPlaybackIssueReportsEnabled(enabled: Boolean) {
         store().edit { prefs ->
-            prefs[playbackIssueReportsEnabledKey] = enabled
+            prefs[playbackIssueReportsEnabledKey] =
+                enabled && BuildConfig.PLAYBACK_DIAGNOSTICS_ENABLED
         }
     }
 

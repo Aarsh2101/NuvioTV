@@ -2,7 +2,6 @@ package com.nuvio.tv.ui.screens.player
 
 import android.content.Context
 import android.net.Uri
-import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -114,19 +113,11 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
 
         val mediaItem = mediaItemBuilder.build()
 
-        val mp4SessionMode = !useParallelConnections && !isHls && !isDash &&
-            resolvedMimeType == MimeTypes.VIDEO_MP4
-        val useChunkSessionSource = (useParallelConnections || mp4SessionMode) && !isHls && !isDash
+        // The chunk-session source is opt-in through parallel connections. Progressive
+        // MP4 playback without parallel connections stays on the normal Media3 path.
+        val useChunkSessionSource = useParallelConnections && !isHls && !isDash
         parallelStartupPrefetchUnlocked.set(!useChunkSessionSource)
         val progressiveUpstreamFactory: DataSource.Factory = if (useChunkSessionSource) {
-            if (mp4SessionMode) {
-                Log.i(
-                    "PlayerMediaSourceFactory",
-                    "MP4_SESSION engaged: single-connection chunk session " +
-                        "(${MP4_SESSION_CHUNK_BYTES / (1024L * 1024L)} MB chunks) " +
-                        "for progressive MP4 with parallel connections off"
-                )
-            }
             val okHttpFactory = OkHttpDataSource.Factory(playbackHttpClient).apply {
                 setDefaultRequestProperties(sanitizedHeaders)
                 setUserAgent(DEFAULT_USER_AGENT)
@@ -135,17 +126,13 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
                 nuvioPerformanceModeEnabled || NuvioEngineConfig.get().isNativeAllocationEnabled()
             ParallelRangeDataSource.Factory(
                 okHttpFactory,
-                if (mp4SessionMode) 1 else parallelConnectionCount,
-                if (mp4SessionMode) {
-                    MP4_SESSION_CHUNK_BYTES
-                } else {
-                    // Runtime enforcement of the tier chunk cap: a value
-                    // persisted before the cap existed (or on another device)
-                    // must not bypass it.
-                    parallelChunkSizeKb
-                        .coerceAtMost(com.nuvio.tv.ui.screens.settings.MemoryBudget.tierMaxChunkMb * 1024)
-                        .toLong() * 1024L
-                },
+                parallelConnectionCount,
+                // Runtime enforcement of the tier chunk cap: a value
+                // persisted before the cap existed (or on another device)
+                // must not bypass it.
+                parallelChunkSizeKb
+                    .coerceAtMost(com.nuvio.tv.ui.screens.settings.MemoryBudget.tierMaxChunkMb * 1024)
+                    .toLong() * 1024L,
                 useNativeMemory = effectiveNative,
                 shouldAllowBackgroundPrefetch = { parallelStartupPrefetchUnlocked.get() },
                 onResolvedUri = { resolved -> currentVodCacheResolvedUrl = resolved?.toString() }
@@ -260,7 +247,6 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
 
     companion object {
         private const val MIME_VIDEO_QUICK_TIME = "video/quicktime"
-        internal const val MP4_SESSION_CHUNK_BYTES = 8L * 1024L * 1024L
         private const val ENABLE_VOD_CACHE = true
         private const val VOD_CACHE_FREE_SPACE_RESERVE_BYTES = 1024L * 1024L * 1024L
         internal const val DEFAULT_USER_AGENT =

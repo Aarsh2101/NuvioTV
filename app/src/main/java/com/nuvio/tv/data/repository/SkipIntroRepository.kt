@@ -191,14 +191,19 @@ class SkipIntroRepository @Inject constructor(
             val response = introDbApi.getSegments(imdbId, season, episode)
             if (response.isSuccessful && response.body() != null) {
                 val data = response.body()!!
-                listOfNotNull(
+                val intervals = listOfNotNull(
                     data.intro.toSkipIntervalOrNull("intro"),
                     data.recap.toSkipIntervalOrNull("recap"),
                     data.outro.toSkipIntervalOrNull("outro")
                 )
-            } else emptyList()
+                Log.i("SkipIntro", "IntroDB: fetched ${intervals.size} segment(s) for $imdbId S${season}E${episode}: $intervals")
+                intervals
+            } else {
+                Log.d("SkipIntro", "IntroDB: response code ${response.code()} for $imdbId S${season}E${episode}")
+                emptyList()
+            }
         } catch (e: Exception) {
-            Log.d("SkipIntro", "IntroDB: no data for $imdbId S${season}E${episode}")
+            Log.w("SkipIntro", "IntroDB: error for $imdbId S${season}E${episode}: ${e.message}")
             emptyList()
         }
     }

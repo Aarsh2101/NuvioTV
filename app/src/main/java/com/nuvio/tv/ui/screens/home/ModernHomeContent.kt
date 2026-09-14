@@ -1128,9 +1128,8 @@ fun ModernHomeContent(
             }
             val heroBackdropHeight = remember(screenHeight, rowsViewportHeight, rowTitleHeight) { (screenHeight - rowsViewportHeight + rowTitleHeight + 14.dp).coerceAtMost(screenHeight) }
             val verticalRowBringIntoViewSpec = remember(localDensity, defaultBringIntoViewSpec, cinemaPresentation) {
-                val minAllowedTopPx = with(localDensity) { 36.dp.toPx() }
-                val maxAllowedTopPx = with(localDensity) { 110.dp.toPx() }
                 val targetTopInsetPx = with(localDensity) { 56.dp.toPx() }
+                val deadbandPx = with(localDensity) { 8.dp.toPx() }
                 @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
                 object : BringIntoViewSpec {
                     override val scrollAnimationSpec: AnimationSpec<Float> = if (cinemaPresentation) {
@@ -1148,21 +1147,18 @@ fun ModernHomeContent(
                         }
                         val now = System.currentTimeMillis()
                         val deltaNav = now - lastHorizontalNavAtMs.longValue
-                        val expandedKey = expandedCatalogFocusKey.value
-                        val activeKey = activeRowKey.value
-                        val firstRowKey = carouselRows.list.firstOrNull()?.key
 
-                        val res = when {
-                            expandedKey != null -> 0f
-                            deltaNav < 350L -> 0f
-                            activeKey == firstRowKey && verticalRowListState.firstVisibleItemIndex == 0 -> 0f
-                            offset in minAllowedTopPx..maxAllowedTopPx -> 0f
-                            else -> {
-                                val distance = offset - targetTopInsetPx
-                                if (distance < 0f && !verticalRowListState.canScrollBackward) 0f else distance
-                            }
+                        // If user is navigating horizontally within a row, suppress vertical scrolling
+                        if (deltaNav < 300L) {
+                            return 0f
                         }
-                        return res
+
+                        val distance = offset - targetTopInsetPx
+                        // Small deadband to absorb subpixel rendering or card focus scale micro-shifts (<= 8dp)
+                        if (kotlin.math.abs(distance) <= deadbandPx) {
+                            return 0f
+                        }
+                        return if (distance < 0f && !verticalRowListState.canScrollBackward) 0f else distance
                     }
                 }
             }

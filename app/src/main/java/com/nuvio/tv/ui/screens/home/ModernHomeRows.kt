@@ -921,7 +921,7 @@ internal fun ModernRowSection(
                     }
                     .focusGroup(),
                 contentPadding = PaddingValues(horizontal = rowStartPadding),
-                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
+                horizontalArrangement = Arrangement.spacedBy(if (cinemaMode) 16.dp else NuvioTheme.spacing.md)
             ) {
                 itemsIndexed(
                     items = row.items.list,
@@ -1353,7 +1353,7 @@ private fun ModernCarouselCard(
             border = CardDefaults.border(focusedBorder = effectiveFocusedBorder),
             scale = CardDefaults.scale(
                 scale = 1f,
-                focusedScale = if (cinemaMode) 1.10f else 1f
+                focusedScale = if (cinemaMode && isBackdropExpanded) 1f else if (cinemaMode) 1.05f else 1f
             ),
             glow = effectiveCardGlow
         ) {

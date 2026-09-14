@@ -118,6 +118,13 @@ fun HomeScreen(
         cinemaFocusController?.activeCinemaCategory = Screen.Home.route
     }
 
+    LaunchedEffect(effectiveCinemaContentType) {
+        if (isCinema) {
+            viewModel.suppressFocusSave = true
+            viewModel.clearFocusState()
+        }
+    }
+
     // Home was the only major screen without a lifecycle observer, so nothing ever told it to
     // look at its catalogs again.
     val lifecycleOwner = LocalLifecycleOwner.current

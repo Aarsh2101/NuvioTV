@@ -315,7 +315,7 @@ internal fun ModernHomeRowsList(
                     if (event.type == KeyEventType.KeyDown &&
                         event.key == Key.DirectionUp &&
                         cinemaTopNavFocusRequester != null &&
-                        activeRowKey.value == firstRowKey
+                        (activeRowKey.value == firstRowKey || verticalRowListState.firstVisibleItemIndex == 0)
                     ) {
                         runCatching { cinemaTopNavFocusRequester.requestFocus() }
                         return@onPreviewKeyEvent true
@@ -324,7 +324,7 @@ internal fun ModernHomeRowsList(
                         event.key == Key.DirectionUp &&
                         effectiveExpandEnabled &&
                         expandedCatalogFocusKey.value != null &&
-                        activeRowKey.value == firstRowKey
+                        (activeRowKey.value == firstRowKey || verticalRowListState.firstVisibleItemIndex == 0)
                     ) return@onPreviewKeyEvent true
                     if (event.type == KeyEventType.KeyDown &&
                         event.key == Key.DirectionDown &&
@@ -390,7 +390,7 @@ internal fun ModernHomeRowsList(
                     },
                 ),
             contentPadding = if (cinemaMode) {
-                PaddingValues(top = 340.dp, bottom = 120.dp)
+                PaddingValues(top = 410.dp, bottom = 120.dp)
             } else {
                 PaddingValues(bottom = rowsViewportHeight)
             },
@@ -506,7 +506,8 @@ internal fun ModernHomeRowsList(
                     isVerticalRowsScrollingState = isVerticalRowsScrollingState,
                     itemFocusRequesters = stableItemFocusRequestersByRow.getOrPut(row.key) {
                         StableRef(mutableMapOf())
-                    }
+                    },
+                    cinemaTopNavFocusRequester = if (row.key == carouselRows.list.firstOrNull()?.key) cinemaTopNavFocusRequester else null
                 )
             }
         }

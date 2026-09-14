@@ -489,7 +489,8 @@ internal fun ModernRowSection(
     onBackdropInteraction: () -> Unit,
     onExpandedCatalogFocusKeyChange: (String?) -> Unit,
     sharedPlaceholderShimmerOffsetState: State<Float>?,
-    itemFocusRequesters: StableRef<MutableMap<Int, FocusRequester>> = StableRef(mutableMapOf())
+    itemFocusRequesters: StableRef<MutableMap<Int, FocusRequester>> = StableRef(mutableMapOf()),
+    cinemaTopNavFocusRequester: FocusRequester? = null
 ) {
     // Unwrap StableRef wrappers
     @Suppress("NAME_SHADOWING") val focusedItemByRow = focusedItemByRow.value
@@ -497,6 +498,7 @@ internal fun ModernRowSection(
     @Suppress("NAME_SHADOWING") val loadMoreRequestedTotals = loadMoreRequestedTotals.value
     @Suppress("NAME_SHADOWING") val itemFocusRequesters = itemFocusRequesters.value
     val rowKey = row.key
+    val cinemaFocusController = LocalCinemaFocusController.current
 
     // Per-row derived state: only invalidates when THIS row's focused index
     // changes, not when any other row's index changes in the shared map.
@@ -536,6 +538,10 @@ internal fun ModernRowSection(
                 Modifier.focusProperties {
                     up = FocusRequester.Cancel
                     down = FocusRequester.Cancel
+                }
+            } else if (cinemaTopNavFocusRequester != null) {
+                Modifier.focusProperties {
+                    up = cinemaTopNavFocusRequester
                 }
             } else Modifier
         )
@@ -953,6 +959,9 @@ internal fun ModernRowSection(
                         derivedStateOf {
                             val isPending = pendingRowFocusKey.value == row.key &&
                                 (pendingRowFocusIndex.value ?: 0) == index
+                            if (cinemaMode && (cinemaFocusController?.focusedNavRoute != null || cinemaFocusController?.isHeroVisible == true)) {
+                                return@derivedStateOf isPending
+                            }
                             val isCurrent = isActiveRow() &&
                                 rowFocusedIndex.value == index
                             isPending || isCurrent
@@ -1099,12 +1108,12 @@ private fun ModernCarouselCard(
     } else {
         cardHeight * (16f / 9f)
     }
-    val targetCardWidth = if (focusedPosterBackdropExpandEnabled && isBackdropExpanded && !cinemaMode) {
+    val targetCardWidth = if (focusedPosterBackdropExpandEnabled && isBackdropExpanded) {
         expandedCardWidth
     } else {
         cardWidth
     }
-    val animatedCardWidthState = if (focusedPosterBackdropExpandEnabled && !cinemaMode) {
+    val animatedCardWidthState = if (focusedPosterBackdropExpandEnabled) {
         animateDpAsState(
             targetValue = targetCardWidth,
             label = "modernCardWidth"
@@ -1479,7 +1488,7 @@ private fun ModernCarouselCard(
                     )
                 }
 
-                if (isWatched) {
+                if (isWatched && !cinemaMode) {
                     WatchedMarker(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -1510,6 +1519,46 @@ private fun ModernCarouselCard(
                         style = MaterialTheme.typography.labelMedium,
                         color = NuvioTheme.colors.TextSecondary,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        } else if (cinemaMode && isBackdropExpanded) {
+            val metadataParts = remember(item.heroPreview) {
+                val parts = mutableListOf<String>()
+                val genreStr = item.heroPreview.genres.take(2).joinToString(", ")
+                if (genreStr.isNotBlank()) parts.add(genreStr)
+                val year = extractYear(item.heroPreview.yearText) ?: item.heroPreview.yearText
+                year?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
+                item.heroPreview.imdbText?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
+                parts
+            }
+            val metadataLine = remember(metadataParts) { metadataParts.joinToString(" • ") }
+            val description = item.heroPreview.description
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+                if (metadataLine.isNotBlank()) {
+                    Text(
+                        text = metadataLine,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Medium
+                        ),
+                        color = Color.White.copy(alpha = 0.75f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (!description.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.60f),
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }

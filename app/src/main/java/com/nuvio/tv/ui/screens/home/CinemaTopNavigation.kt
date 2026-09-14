@@ -71,6 +71,9 @@ private val CINEMA_RAIL_ROUTES = setOf(
 @Stable
 internal class CinemaFocusController {
     val contentFocusRequester = FocusRequester()
+    val heroPlayFocusRequester = FocusRequester()
+    val heroMoreInfoFocusRequester = FocusRequester()
+    var isHeroVisible by mutableStateOf(true)
     private val navFocusRequesters = mutableMapOf<String, FocusRequester>()
 
     var selectedRoute by mutableStateOf(Screen.Home.route)
@@ -93,6 +96,7 @@ internal class CinemaFocusController {
     fun onNavFocusChanged(route: String, hasFocus: Boolean) {
         if (hasFocus) {
             focusedNavRoute = route
+            isHeroVisible = true
             // A horizontal move is an explicit user choice; do not let the previous
             // destination's restore loop pull focus back to the old tab.
             if (pendingNavigationRoute != null && pendingNavigationRoute != route) {
@@ -259,6 +263,17 @@ private fun CinemaNavButton(
         latestOnNavigate(route)
     }
 
+    // Auto-transition to tab content on comfortable dwell (320ms), matching Netflix TV behavior
+    LaunchedEffect(focused, route, selectedRoute, focusController?.activeCinemaCategory) {
+        if (!focused || !isRailRoute) return@LaunchedEffect
+        kotlinx.coroutines.delay(320L)
+        val currentActive = focusController?.activeCinemaCategory ?: selectedRoute
+        if (focused && currentActive != route) {
+            focusController?.activeCinemaCategory = route
+            latestOnNavigate(route)
+        }
+    }
+
     val containerColor by animateColorAsState(
         targetValue = when {
             focused -> Color.White.copy(alpha = 0.92f)
@@ -272,7 +287,15 @@ private fun CinemaNavButton(
     val navFocusRequester = focusController?.requester(route)
     Card(
         onClick = {
-            if (!selected) {
+            if (isRailRoute) {
+                // If clicked, smoothly transfer focus down to hero or content without reloading
+                val target = if (focusController?.isHeroVisible == true) {
+                    focusController.heroPlayFocusRequester
+                } else {
+                    focusController?.contentFocusRequester
+                }
+                runCatching { target?.requestFocus() }
+            } else if (!selected) {
                 navigateFromTopBar()
             }
         },
@@ -280,8 +303,15 @@ private fun CinemaNavButton(
             .height(40.dp)
             .then(if (navFocusRequester != null) Modifier.focusRequester(navFocusRequester) else Modifier)
             .then(
-                if (focusController != null && (route in CINEMA_RAIL_ROUTES || route == Screen.Search.route)) {
-                    // The Cinema rail and Search have stable shared entry requesters.
+                if (focusController != null && (route in CINEMA_RAIL_ROUTES)) {
+                    Modifier.focusProperties {
+                        down = if (focusController.isHeroVisible) {
+                            focusController.heroPlayFocusRequester
+                        } else {
+                            focusController.contentFocusRequester
+                        }
+                    }
+                } else if (focusController != null && route == Screen.Search.route) {
                     Modifier.focusProperties {
                         down = focusController.contentFocusRequester
                     }
@@ -289,10 +319,29 @@ private fun CinemaNavButton(
             )
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
-                    if (!selected) {
-                        navigateFromTopBar()
+                    if (isRailRoute && !selected) {
+                        focusController?.activeCinemaCategory = route
+                        latestOnNavigate(route)
                     }
                     focusController?.cancelPendingNavigation()
+                    if (isRailRoute && focusController != null) {
+                        val target = if (focusController.isHeroVisible) {
+                            focusController.heroPlayFocusRequester
+                        } else {
+                            focusController.contentFocusRequester
+                        }
+                        val handled = runCatching {
+                            target.requestFocus()
+                            true
+                        }.getOrDefault(false)
+                        if (handled) return@onPreviewKeyEvent true
+                    } else if (route == Screen.Search.route && focusController != null) {
+                        val handled = runCatching {
+                            focusController.contentFocusRequester.requestFocus()
+                            true
+                        }.getOrDefault(false)
+                        if (handled) return@onPreviewKeyEvent true
+                    }
                 }
                 false
             }

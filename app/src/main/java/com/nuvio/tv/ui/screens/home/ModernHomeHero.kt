@@ -3,6 +3,8 @@ package com.nuvio.tv.ui.screens.home
 import com.nuvio.tv.ui.theme.NuvioMotion
 
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.components.TrailerPlayer
+import com.nuvio.tv.ui.components.ImdbRatingSourceLabel
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -60,9 +62,22 @@ import com.nuvio.tv.ui.util.recompositionHighlighter
 import coil3.request.transitionFactory
 import com.nuvio.tv.R
 import kotlinx.coroutines.delay
-import com.nuvio.tv.ui.components.ImdbRatingSourceLabel
-import com.nuvio.tv.ui.components.TrailerPlayer
 import androidx.compose.ui.res.stringResource
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.tv.material3.Border
+import androidx.tv.material3.Card
+import androidx.tv.material3.CardDefaults
+import androidx.tv.material3.Icon
 
 private data class ModernHeroSecondaryMeta(
     val highlightText: String?,
@@ -301,6 +316,14 @@ internal fun HeroTitleBlock(
     portraitMode: Boolean,
     showImdbRatings: Boolean,
     trailerPlaying: () -> Boolean = { false },
+    cinemaPresentation: Boolean = false,
+    onPlayClick: (() -> Unit)? = null,
+    onMoreInfoClick: (() -> Unit)? = null,
+    playFocusRequester: FocusRequester? = null,
+    moreInfoFocusRequester: FocusRequester? = null,
+    downFocusRequester: FocusRequester? = null,
+    upFocusRequester: FocusRequester? = null,
+    onHeroFocused: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val currentPreview = previewProvider()
@@ -332,7 +355,15 @@ internal fun HeroTitleBlock(
                 previewProvider = { targetPreview },
                 portraitMode = portraitMode,
                 showImdbRatings = showImdbRatings,
-                trailerPlaying = trailerPlaying
+                trailerPlaying = trailerPlaying,
+                cinemaPresentation = cinemaPresentation,
+                onPlayClick = onPlayClick,
+                onMoreInfoClick = onMoreInfoClick,
+                playFocusRequester = if (targetPreview == displayPreview) playFocusRequester else null,
+                moreInfoFocusRequester = if (targetPreview == displayPreview) moreInfoFocusRequester else null,
+                downFocusRequester = downFocusRequester,
+                upFocusRequester = upFocusRequester,
+                onHeroFocused = onHeroFocused
             )
         }
     }
@@ -343,11 +374,19 @@ private fun HeroTitleContent(
     previewProvider: () -> HeroPreview?,
     portraitMode: Boolean,
     showImdbRatings: Boolean,
-    trailerPlaying: () -> Boolean = { false }
+    trailerPlaying: () -> Boolean = { false },
+    cinemaPresentation: Boolean = false,
+    onPlayClick: (() -> Unit)? = null,
+    onMoreInfoClick: (() -> Unit)? = null,
+    playFocusRequester: FocusRequester? = null,
+    moreInfoFocusRequester: FocusRequester? = null,
+    downFocusRequester: FocusRequester? = null,
+    upFocusRequester: FocusRequester? = null,
+    onHeroFocused: (() -> Unit)? = null
 ) {
     val preview = previewProvider() ?: return
     val highlighterEnabled = LocalRecompositionHighlighterEnabled.current
-    val descriptionMaxLines = 4
+    val descriptionMaxLines = if (cinemaPresentation) 2 else 4
     val descriptionScale = if (portraitMode) 0.90f else 1f
     val titleScale = if (portraitMode) 0.92f else 1f
     val metaScale = 1f
@@ -525,14 +564,22 @@ private fun HeroTitleContent(
                         HeroMetaDivider(metaScale)
                     }
                     if (!yearText.isNullOrBlank()) {
+                        val displayYear = if (cinemaPresentation) {
+                            extractYear(yearText) ?: yearText
+                        } else {
+                            yearText
+                        }
                         Text(
-                            text = yearText,
+                            text = displayYear,
                             style = labelMedium,
                             color = NuvioTheme.colors.TextSecondary,
                             maxLines = 1
                         )
                     }
                     if (reserveImdbInPrimaryWithHighlight) {
+                        if (!runtimeText.isNullOrBlank() || !yearText.isNullOrBlank()) {
+                            HeroMetaDivider(metaScale)
+                        }
                         HeroImdbMeta(
                             imdbText = preview.imdbText.orEmpty(),
                             textStyle = labelMedium,
@@ -639,6 +686,150 @@ private fun HeroTitleContent(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.graphicsLayer { alpha = metaAlpha }
             )
+        }
+
+        if (cinemaPresentation && onPlayClick != null && onMoreInfoClick != null) {
+            HeroActionButtons(
+                onPlayClick = onPlayClick,
+                onMoreInfoClick = onMoreInfoClick,
+                playFocusRequester = playFocusRequester,
+                moreInfoFocusRequester = moreInfoFocusRequester,
+                downFocusRequester = downFocusRequester,
+                upFocusRequester = upFocusRequester,
+                onHeroFocused = onHeroFocused,
+                modifier = Modifier.graphicsLayer { alpha = metaAlpha }
+            )
+        }
+    }
+}
+
+@Composable
+internal fun HeroActionButtons(
+    onPlayClick: () -> Unit,
+    onMoreInfoClick: () -> Unit,
+    playFocusRequester: FocusRequester?,
+    moreInfoFocusRequester: FocusRequester?,
+    downFocusRequester: FocusRequester?,
+    upFocusRequester: FocusRequester?,
+    onHeroFocused: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.padding(top = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        var playFocused by remember { mutableStateOf(false) }
+        val playBgColor by animateColorAsState(
+            targetValue = if (playFocused) Color.White else Color.White.copy(alpha = 0.22f),
+            label = "playBtnBg"
+        )
+        val playContentColor = if (playFocused) Color.Black else Color.White
+
+        Card(
+            onClick = onPlayClick,
+            modifier = Modifier
+                .height(42.dp)
+                .then(if (playFocusRequester != null) Modifier.focusRequester(playFocusRequester) else Modifier)
+                .focusProperties {
+                    if (upFocusRequester != null) up = upFocusRequester
+                    if (downFocusRequester != null) down = downFocusRequester
+                    if (moreInfoFocusRequester != null) right = moreInfoFocusRequester
+                }
+                .onFocusChanged {
+                    playFocused = it.hasFocus
+                    if (it.hasFocus) onHeroFocused?.invoke()
+                },
+            shape = CardDefaults.shape(RoundedCornerShape(21.dp)),
+            colors = CardDefaults.colors(
+                containerColor = playBgColor,
+                focusedContainerColor = Color.White
+            ),
+            border = CardDefaults.border(
+                border = Border.None,
+                focusedBorder = Border(
+                    border = BorderStroke(2.5.dp, Color.White),
+                    shape = RoundedCornerShape(21.dp)
+                )
+            ),
+            scale = CardDefaults.scale(scale = 1f, focusedScale = 1.08f)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .padding(horizontal = 22.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = playContentColor,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Play",
+                    color = playContentColor,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false)
+                    )
+                )
+            }
+        }
+
+        var infoFocused by remember { mutableStateOf(false) }
+        val infoBgColor by animateColorAsState(
+            targetValue = if (infoFocused) Color.White else Color.White.copy(alpha = 0.22f),
+            label = "infoBtnBg"
+        )
+        val infoContentColor = if (infoFocused) Color.Black else Color.White
+
+        Card(
+            onClick = onMoreInfoClick,
+            modifier = Modifier
+                .height(42.dp)
+                .then(if (moreInfoFocusRequester != null) Modifier.focusRequester(moreInfoFocusRequester) else Modifier)
+                .focusProperties {
+                    if (upFocusRequester != null) up = upFocusRequester
+                    if (downFocusRequester != null) down = downFocusRequester
+                    if (playFocusRequester != null) left = playFocusRequester
+                }
+                .onFocusChanged {
+                    infoFocused = it.hasFocus
+                    if (it.hasFocus) onHeroFocused?.invoke()
+                },
+            shape = CardDefaults.shape(RoundedCornerShape(21.dp)),
+            colors = CardDefaults.colors(
+                containerColor = infoBgColor,
+                focusedContainerColor = Color.White
+            ),
+            border = CardDefaults.border(
+                border = Border.None,
+                focusedBorder = Border(
+                    border = BorderStroke(2.5.dp, Color.White),
+                    shape = RoundedCornerShape(21.dp)
+                )
+            ),
+            scale = CardDefaults.scale(scale = 1f, focusedScale = 1.08f)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .padding(horizontal = 22.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "More Info",
+                    color = infoContentColor,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false)
+                    )
+                )
+            }
         }
     }
 }

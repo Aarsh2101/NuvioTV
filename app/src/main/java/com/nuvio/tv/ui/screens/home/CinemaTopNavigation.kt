@@ -60,7 +60,6 @@ import com.nuvio.tv.R
 import com.nuvio.tv.ui.navigation.Screen
 import com.nuvio.tv.ui.theme.NuvioTheme
 
-private const val CINEMA_NAV_FOCUS_DEBOUNCE_MS = 190L
 private const val CINEMA_NAV_FOCUS_RESTORE_ATTEMPTS = 30
 private val CINEMA_RAIL_ROUTES = setOf(
     Screen.Home.route,
@@ -260,21 +259,6 @@ private fun CinemaNavButton(
         latestOnNavigate(route)
     }
 
-    // Focus is intentionally a navigation gesture in Cinema. Debouncing here, rather than in
-    // the route shell, cancels immediately when D-pad focus continues to the next tab.
-    LaunchedEffect(focused, route, selectedRoute, focusController?.activeCinemaCategory) {
-        if (!focused) return@LaunchedEffect
-        kotlinx.coroutines.delay(CINEMA_NAV_FOCUS_DEBOUNCE_MS)
-        val currentActive = if (isRailRoute && selectedRoute in CINEMA_RAIL_ROUTES) {
-            focusController?.activeCinemaCategory ?: selectedRoute
-        } else {
-            selectedRoute
-        }
-        if (focused && currentActive != route) {
-            navigateFromTopBar()
-        }
-    }
-
     val containerColor by animateColorAsState(
         targetValue = when {
             focused -> Color.White.copy(alpha = 0.92f)
@@ -287,7 +271,11 @@ private fun CinemaNavButton(
 
     val navFocusRequester = focusController?.requester(route)
     Card(
-        onClick = { navigateFromTopBar() },
+        onClick = {
+            if (!selected) {
+                navigateFromTopBar()
+            }
+        },
         modifier = modifier
             .height(40.dp)
             .then(if (navFocusRequester != null) Modifier.focusRequester(navFocusRequester) else Modifier)
@@ -301,6 +289,9 @@ private fun CinemaNavButton(
             )
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+                    if (!selected) {
+                        navigateFromTopBar()
+                    }
                     focusController?.cancelPendingNavigation()
                 }
                 false

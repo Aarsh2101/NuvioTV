@@ -390,11 +390,11 @@ internal fun ModernHomeRowsList(
                     },
                 ),
             contentPadding = if (cinemaMode) {
-                PaddingValues(top = 340.dp, bottom = 80.dp)
+                PaddingValues(top = 340.dp, bottom = 120.dp)
             } else {
                 PaddingValues(bottom = rowsViewportHeight)
             },
-            verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xl)
+            verticalArrangement = Arrangement.spacedBy(if (cinemaMode) 30.dp else NuvioTheme.spacing.xl)
         ) {
             itemsIndexed(
                 items = carouselRows.list,

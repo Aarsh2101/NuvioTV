@@ -304,9 +304,34 @@ fun ModernHomeContent(
     val pendingRowFocusIndex = remember { mutableStateOf<Int?>(null) }
     val pendingRowFocusNonce = remember { mutableIntStateOf(0) }
     val restoredFromSavedState = remember { mutableStateOf(false) }
-    val heroItem = remember {
-        val initialHero = carouselRows.list.firstOrNull()?.items?.list?.firstOrNull()?.heroPreview
-        mutableStateOf<HeroPreview?>(initialHero)
+    val featuredHeroItem = remember(uiState.heroItems, carouselRows, cinemaContentType) {
+        val matchingHero = uiState.heroItems.firstOrNull { item ->
+            if (cinemaContentType == null) true
+            else cinemaTypeMatches(item.apiType, cinemaContentType)
+        }?.let { hero ->
+            HeroPreview(
+                title = hero.name,
+                logo = hero.logo,
+                description = hero.description,
+                contentTypeText = hero.apiType.replaceFirstChar { ch -> ch.uppercase() },
+                isSeries = isSeriesType(hero.apiType),
+                yearText = extractYearText(hero.type, hero.releaseInfo, hero.released),
+                runtimeText = formatHeroRuntime(hero.runtime),
+                imdbText = hero.imdbRating?.let { String.format(java.util.Locale.US, "%.1f", it) },
+                ageRatingText = hero.ageRating,
+                statusText = hero.status,
+                countryText = hero.country,
+                languageText = hero.language?.uppercase(),
+                genres = hero.genres.take(3).asStable(),
+                poster = hero.poster,
+                backdrop = hero.backdropUrl,
+                imageUrl = hero.backdropUrl ?: hero.poster
+            )
+        }
+        matchingHero ?: carouselRows.list.firstOrNull()?.items?.list?.firstOrNull()?.heroPreview
+    }
+    val heroItem = remember(featuredHeroItem) {
+        mutableStateOf<HeroPreview?>(featuredHeroItem)
     }
     val optionsItem = remember { mutableStateOf<ContinueWatchingItem?>(null) }
     val lastFocusedContinueWatchingIndex = remember { mutableIntStateOf(-1) }
@@ -626,6 +651,11 @@ fun ModernHomeContent(
     val latestHeroRow by rememberUpdatedState(activeRow)
     val latestHeroIndex by rememberUpdatedState(clampedActiveItemIndex)
     LaunchedEffect(activeHeroItemKey, verticalRowListState) {
+        if (cinemaPresentation) {
+            // In Netflix Cinema mode, card hover/focus in catalog rows never replaces
+            // the featured section hero or screen background wallpaper.
+            return@LaunchedEffect
+        }
         if (verticalRowListState.isScrollInProgress) return@LaunchedEffect
         val targetHeroKey = activeHeroItemKey ?: return@LaunchedEffect
         val settleDelayMs = heroFocusSettleDelayMs.longValue
@@ -688,7 +718,7 @@ fun ModernHomeContent(
 
     val portraitBaseWidth = uiState.posterCardWidthDp.dp
     val portraitBaseHeight = uiState.posterCardHeightDp.dp
-    val portraitModernPosterScale = 1.08f
+    val portraitModernPosterScale = if (cinemaPresentation) 1.20f else 1.08f
     val landscapeModernPosterScale = 1.34f
     val portraitCatalogCardWidth = portraitBaseWidth * 0.84f * portraitModernPosterScale
     val portraitCatalogCardHeight = portraitBaseHeight * 0.84f * portraitModernPosterScale
@@ -770,6 +800,7 @@ fun ModernHomeContent(
                     } else null
 
                     val resolvedHero = when {
+                        cinemaPresentation -> featuredHeroItem ?: heroItem.value
                         activeCarouselItem == null -> heroItem.value ?: carouselRows.list.firstOrNull()?.items?.list?.firstOrNull()?.heroPreview
                         enrichmentActive -> activeCarouselItem.heroPreview
                         enrichedHero != null -> enrichedHero
@@ -783,8 +814,12 @@ fun ModernHomeContent(
                     // Also treat as pending when activeCarouselItem is null (row not yet resolved).
                     val heroEnrichmentEnabled = uiState.heroEnrichmentEnabled
                     val enrichmentFailed = activeItemId != null && activeItemId in failedEnrichmentIds
-                    val effectiveEnrichmentActive = activeCarouselItem == null || enrichmentActive ||
-                        (enrichedHero == null && activeItemId != null && heroEnrichmentEnabled && !enrichmentFailed)
+                    val effectiveEnrichmentActive = if (cinemaPresentation) {
+                        false
+                    } else {
+                        activeCarouselItem == null || enrichmentActive ||
+                            (enrichedHero == null && activeItemId != null && heroEnrichmentEnabled && !enrichmentFailed)
+                    }
                     
                     val activeRowKeyVal = activeRowKey.value
                     val activeRow = activeRowKeyVal?.let { rowByKey[it] }
@@ -792,12 +827,20 @@ fun ModernHomeContent(
                         item.heroPreview.backdrop?.takeIf { it.isNotBlank() }
                     }
                     
-                    val heroBackdrop = firstNonBlank(
-                        resolvedHero?.backdrop,
-                        resolvedHero?.imageUrl,
-                        resolvedHero?.poster,
-                        activeRowFallbackBackdrop
-                    )
+                    val heroBackdrop = if (cinemaPresentation) {
+                        firstNonBlank(
+                            featuredHeroItem?.backdrop,
+                            featuredHeroItem?.imageUrl,
+                            featuredHeroItem?.poster
+                        )
+                    } else {
+                        firstNonBlank(
+                            resolvedHero?.backdrop,
+                            resolvedHero?.imageUrl,
+                            resolvedHero?.poster,
+                            activeRowFallbackBackdrop
+                        )
+                    }
                     
                     Triple(heroBackdrop, resolvedHero, effectiveEnrichmentActive)
                 }
@@ -1045,7 +1088,7 @@ fun ModernHomeContent(
             }
             val heroBackdropHeight = remember(screenHeight, rowsViewportHeight, rowTitleHeight) { (screenHeight - rowsViewportHeight + rowTitleHeight + 14.dp).coerceAtMost(screenHeight) }
             val verticalRowBringIntoViewSpec = remember(localDensity, defaultBringIntoViewSpec, cinemaPresentation, carouselRows) {
-                val normalTopInsetPx = with(localDensity) { 180.dp.toPx() }
+                val normalTopInsetPx = with(localDensity) { 56.dp.toPx() }
                 val firstRowTopInsetPx = with(localDensity) { 340.dp.toPx() }
                 @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
                 object : BringIntoViewSpec {
@@ -1069,7 +1112,7 @@ fun ModernHomeContent(
                     val isFirstRow = activeRowKey.value == carouselRows.list.firstOrNull()?.key
                     if (isFirstRow) false
                     else verticalRowListState.firstVisibleItemIndex > 0 ||
-                        verticalRowListState.firstVisibleItemScrollOffset > 150
+                        verticalRowListState.firstVisibleItemScrollOffset > 40
                 }
             }
             val isScrolledDown = isScrolledDownState.value
@@ -1135,7 +1178,12 @@ fun ModernHomeContent(
                 isFullScreen = isFullScreenLambda,
                 heroMediaWidthPx = heroMediaWidthPx,
                 heroMediaHeightPx = heroMediaHeightPx,
-                modifier = heroMediaModifier,
+                modifier = heroMediaModifier.graphicsLayer {
+                    if (cinemaPresentation) {
+                        alpha = billboardAlpha
+                        translationY = billboardTranslationY
+                    }
+                },
                 onTrailerEnded = onTrailerEndedLambda,
                 onFirstFrameRendered = onFirstFrameRenderedLambda
             )

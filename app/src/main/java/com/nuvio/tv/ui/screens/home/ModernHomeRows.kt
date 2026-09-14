@@ -423,6 +423,19 @@ private fun ModernCatalogRowItem(
     )
 }
 
+private fun formatCinemaRowTitle(raw: String): String {
+    val trimmed = raw.trim()
+    return when {
+        trimmed.equals("Popular - Series", ignoreCase = true) -> "Popular TV Shows"
+        trimmed.equals("Popular - Movie", ignoreCase = true) -> "Popular Movies"
+        trimmed.equals("New - Series", ignoreCase = true) -> "New TV Releases"
+        trimmed.equals("New - Movie", ignoreCase = true) -> "New Movie Releases"
+        trimmed.contains(" - Series", ignoreCase = true) -> trimmed.replace(" - Series", " TV Shows", ignoreCase = true)
+        trimmed.contains(" - Movie", ignoreCase = true) -> trimmed.replace(" - Movie", " Movies", ignoreCase = true)
+        else -> trimmed
+    }
+}
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun ModernRowSection(
@@ -531,7 +544,7 @@ internal fun ModernRowSection(
         val rowTitleStyle = remember(titleMediumStyle) {
             titleMediumStyle.copy(fontWeight = FontWeight.SemiBold)
         }
-        val rowTitle = row.title
+        val rowTitle = if (cinemaMode) formatCinemaRowTitle(row.title) else row.title
         val textColor = NuvioTheme.colors.TextPrimary
         val textModifier = remember(rowTitleBottom) {
             Modifier.padding(start = 52.dp, bottom = rowTitleBottom)

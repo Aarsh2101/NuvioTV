@@ -5,7 +5,13 @@ package com.nuvio.tv.ui.screens.home
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 import android.view.KeyEvent as AndroidKeyEvent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -288,6 +294,30 @@ private fun ModernCatalogRowItem(
         // knows this item is now the one in charge.
         latestOnFocused()
 
+        if (cinemaMode) {
+            when (payload) {
+                is ModernPayload.Catalog -> {
+                    if (!payload.itemId.startsWith("__placeholder_")) {
+                        latestOnCatalogSelectionFocused(
+                            FocusedCatalogSelection(
+                                focusKey = focusKey,
+                                payload = payload
+                            )
+                        )
+                    }
+                }
+                is ModernPayload.CollectionFolder -> {
+                    latestOnCatalogSelectionFocused(
+                        FocusedCatalogSelection(
+                            focusKey = focusKey,
+                            payload = payload
+                        )
+                    )
+                }
+                is ModernPayload.ContinueWatching -> Unit
+            }
+        }
+
         val targetEventId = focusEventId
         delay(MODERN_HORIZONTAL_FOCUS_DEBOUNCE_MS)
         if (!isCardFocused || focusEventId != targetEventId) {
@@ -297,9 +327,19 @@ private fun ModernCatalogRowItem(
         // Heavy "settled" work (trailers, enrichment) remains debounced.
         item.metaPreview?.let { latestOnItemFocus(it) }
         latestOnPreloadAdjacentItem()
-        when (payload) {
-            is ModernPayload.Catalog -> {
-                if (!payload.itemId.startsWith("__placeholder_")) {
+        if (!cinemaMode) {
+            when (payload) {
+                is ModernPayload.Catalog -> {
+                    if (!payload.itemId.startsWith("__placeholder_")) {
+                        latestOnCatalogSelectionFocused(
+                            FocusedCatalogSelection(
+                                focusKey = focusKey,
+                                payload = payload
+                            )
+                        )
+                    }
+                }
+                is ModernPayload.CollectionFolder -> {
                     latestOnCatalogSelectionFocused(
                         FocusedCatalogSelection(
                             focusKey = focusKey,
@@ -307,16 +347,8 @@ private fun ModernCatalogRowItem(
                         )
                     )
                 }
+                is ModernPayload.ContinueWatching -> Unit
             }
-            is ModernPayload.CollectionFolder -> {
-                latestOnCatalogSelectionFocused(
-                    FocusedCatalogSelection(
-                        focusKey = focusKey,
-                        payload = payload
-                    )
-                )
-            }
-            is ModernPayload.ContinueWatching -> Unit
         }
     }
 
@@ -332,9 +364,13 @@ private fun ModernCatalogRowItem(
     // Expansion is armed from a parent-level focusKey timer that can outlive real
     // card focus (e.g. user moves left into the sidebar). Never show the expanded
     // backdrop on a card that is not actually focused (#2815).
-    val effectiveBackdropExpanded by remember(isBackdropExpanded, suppressCardExpansionForHeroTrailer) {
+    val effectiveBackdropExpanded by remember(isBackdropExpanded, suppressCardExpansionForHeroTrailer, cinemaMode) {
         derivedStateOf {
-            isCardFocused && isBackdropExpanded() && !suppressCardExpansionForHeroTrailer
+            if (cinemaMode) {
+                isCardFocused && !suppressCardExpansionForHeroTrailer
+            } else {
+                isCardFocused && isBackdropExpanded() && !suppressCardExpansionForHeroTrailer
+            }
         }
     }
 
@@ -1010,11 +1046,12 @@ internal fun ModernRowSection(
                                 effectiveExpandEnabled,
                                 isRowScrollingState,
                                 expandedCatalogFocusKey,
-                                expandedFocusKey
+                                expandedFocusKey,
+                                cinemaMode
                             ) {
                                 {
                                     effectiveExpandEnabled &&
-                                        (!isRowScrollingState.value || isExpansionScrollActive) &&
+                                        (cinemaMode || !isRowScrollingState.value || isExpansionScrollActive) &&
                                         expandedCatalogFocusKey.value == expandedFocusKey
                                 }
                             }
@@ -1116,6 +1153,10 @@ private fun ModernCarouselCard(
     val animatedCardWidthState = if (focusedPosterBackdropExpandEnabled) {
         animateDpAsState(
             targetValue = targetCardWidth,
+            animationSpec = tween(
+                durationMillis = 280,
+                easing = FastOutSlowInEasing
+            ),
             label = "modernCardWidth"
         )
     } else {
@@ -1203,6 +1244,13 @@ private fun ModernCarouselCard(
         with(density) { cardHeight.roundToPx() }.coerceAtLeast(1)
     }
 
+    val posterUrl = if (isCollectionFolder && !payload?.coverEmoji.isNullOrBlank()) {
+        item.imageUrl
+    } else {
+        item.imageUrl ?: item.heroPreview.poster ?: item.heroPreview.backdrop
+    }
+    val backdropUrl = effectiveBackdropUrl ?: item.heroPreview.backdrop
+
     val revalidationKey = com.nuvio.tv.core.image.rememberImageRevalidationKey(imageUrl)
     val imageModel = remember(context, imageUrl, requestWidthPx, requestHeightPx, revalidationKey) {
         imageUrl?.let {
@@ -1216,6 +1264,42 @@ private fun ModernCarouselCard(
             }
             builder.build()
         }
+    }
+    val posterModel = remember(context, posterUrl, requestWidthPx, requestHeightPx, revalidationKey) {
+        posterUrl?.let {
+            val builder = ImageRequest.Builder(context)
+                .data(it)
+                .crossfade(true)
+                .memoryCacheKey("${it}_${requestWidthPx}x${requestHeightPx}_v$revalidationKey")
+                .size(width = requestWidthPx, height = requestHeightPx)
+            if (revalidationKey > 0) {
+                builder.placeholderMemoryCacheKey("${it}_${requestWidthPx}x${requestHeightPx}_v${revalidationKey - 1}")
+            }
+            builder.build()
+        }
+    }
+    val backdropModel = remember(context, backdropUrl, requestWidthPx, requestHeightPx) {
+        backdropUrl?.takeIf { it != posterUrl }?.let {
+            ImageRequest.Builder(context)
+                .data(it)
+                .crossfade(true)
+                .memoryCacheKey("${it}_${requestWidthPx}x${requestHeightPx}")
+                .size(width = requestWidthPx, height = requestHeightPx)
+                .build()
+        }
+    }
+    val backdropCrossfadeAlpha by animateFloatAsState(
+        targetValue = if (isBackdropExpanded && backdropModel != null) 1f else 0f,
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label = "backdropCrossfade"
+    )
+    val titleOverlayAlpha by animateFloatAsState(
+        targetValue = if (cinemaMode) (if (isBackdropExpanded) 1f else 0f) else 1f,
+        animationSpec = tween(durationMillis = 240, delayMillis = 40, easing = FastOutSlowInEasing),
+        label = "cardTitleOverlayAlpha"
+    )
+    val titleOverlayTranslationY = with(density) {
+        if (cinemaMode) ((1f - titleOverlayAlpha) * 8.dp.toPx()) else 0f
     }
     val logoHeight = cardHeight * 0.34f
     val logoHeightPx = remember(logoHeight, density) {
@@ -1395,6 +1479,26 @@ private fun ModernCarouselCard(
                                 .fillMaxSize()
                                 .placeholderCardShimmer(effectivePlaceholderShimmerOffsetState)
                         )
+                    } else if (cinemaMode && !posterUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = posterModel,
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            placeholder = backgroundPainter,
+                            error = backgroundPainter,
+                            fallback = backgroundPainter,
+                            contentScale = ContentScale.Crop
+                        )
+                        if (backdropCrossfadeAlpha > 0f && backdropModel != null) {
+                            AsyncImage(
+                                model = backdropModel,
+                                contentDescription = item.title,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer { alpha = backdropCrossfadeAlpha },
+                                contentScale = ContentScale.Crop
+                            )
+                        }
                     } else if (hasImage) {
                         AsyncImage(
                             model = imageModel,
@@ -1461,7 +1565,7 @@ private fun ModernCarouselCard(
                     }
                 }
 
-                if (hasLandscapeLogo) {
+                if (hasLandscapeLogo && (!cinemaMode || titleOverlayAlpha > 0f)) {
                     AsyncImage(
                         model = logoModel,
                         contentDescription = item.title,
@@ -1470,11 +1574,15 @@ private fun ModernCarouselCard(
                             .align(Alignment.BottomStart)
                             .fillMaxWidth(0.62f)
                             .height(cardHeight * 0.34f)
-                            .padding(start = 10.dp, end = 10.dp, bottom = NuvioTheme.spacing.sm),
+                            .padding(start = 10.dp, end = 10.dp, bottom = NuvioTheme.spacing.sm)
+                            .graphicsLayer {
+                                alpha = titleOverlayAlpha
+                                translationY = titleOverlayTranslationY
+                            },
                         contentScale = ContentScale.Fit,
                         alignment = Alignment.CenterStart
                     )
-                } else if (useLandscapeOverlayTreatment || isBackdropExpanded) {
+                } else if ((useLandscapeOverlayTreatment || isBackdropExpanded) && (!cinemaMode || titleOverlayAlpha > 0f)) {
                     Text(
                         text = item.title,
                         style = titleStyle,
@@ -1485,6 +1593,10 @@ private fun ModernCarouselCard(
                             .align(Alignment.BottomStart)
                             .fillMaxWidth(0.62f)
                             .padding(start = 10.dp, end = 10.dp, bottom = NuvioTheme.spacing.md)
+                            .graphicsLayer {
+                                alpha = titleOverlayAlpha
+                                translationY = titleOverlayTranslationY
+                            }
                     )
                 }
 
@@ -1499,7 +1611,7 @@ private fun ModernCarouselCard(
             }
         }
 
-        if (showLabels && !isBackdropExpanded && item.title.isNotBlank()) {
+        if (showLabels && !cinemaMode && !isBackdropExpanded && item.title.isNotBlank()) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1523,44 +1635,61 @@ private fun ModernCarouselCard(
                     )
                 }
             }
-        } else if (cinemaMode && isBackdropExpanded) {
-            val metadataParts = remember(item.heroPreview) {
-                val parts = mutableListOf<String>()
-                val genreStr = item.heroPreview.genres.take(2).joinToString(", ")
-                if (genreStr.isNotBlank()) parts.add(genreStr)
-                val year = extractYear(item.heroPreview.yearText) ?: item.heroPreview.yearText
-                year?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
-                item.heroPreview.imdbText?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
-                parts
-            }
-            val metadataLine = remember(metadataParts) { metadataParts.joinToString(" • ") }
-            val description = item.heroPreview.description
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
+        } else if (cinemaMode) {
+            AnimatedVisibility(
+                visible = isBackdropExpanded,
+                enter = fadeIn(
+                    animationSpec = tween(durationMillis = 240, delayMillis = 40, easing = FastOutSlowInEasing)
+                ) + expandVertically(
+                    animationSpec = tween(durationMillis = 240, delayMillis = 40, easing = FastOutSlowInEasing),
+                    expandFrom = Alignment.Top
+                ),
+                exit = fadeOut(
+                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                ) + shrinkVertically(
+                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                    shrinkTowards = Alignment.Top
+                )
             ) {
-                if (metadataLine.isNotBlank()) {
-                    Text(
-                        text = metadataLine,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.Medium
-                        ),
-                        color = Color.White.copy(alpha = 0.75f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                val metadataParts = remember(item.heroPreview) {
+                    val parts = mutableListOf<String>()
+                    val genreStr = item.heroPreview.genres.take(2).joinToString(", ")
+                    if (genreStr.isNotBlank()) parts.add(genreStr)
+                    val year = extractYear(item.heroPreview.yearText) ?: item.heroPreview.yearText
+                    year?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
+                    item.heroPreview.imdbText?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
+                    parts
                 }
-                if (!description.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.60f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                val metadataLine = remember(metadataParts) { metadataParts.joinToString(" • ") }
+                val description = item.heroPreview.description
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    if (metadataLine.isNotBlank()) {
+                        Text(
+                            text = metadataLine,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = Color.White.copy(alpha = 0.75f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (!description.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.60f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            lineHeight = 14.sp
+                        )
+                    }
                 }
             }
         }

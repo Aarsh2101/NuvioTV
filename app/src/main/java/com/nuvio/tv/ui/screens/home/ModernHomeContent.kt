@@ -413,26 +413,43 @@ fun ModernHomeContent(
         // complete while the user is on the Home button (#2815).
         isSidebarExpanded.value
     ) {
-        // Always clear first so sidebar open / selection change collapses immediately.
-        expandedCatalogFocusKey.value = null
-        if (!shouldActivateFocusedPosterFlow) return@LaunchedEffect
-        if (isSidebarExpanded.value) return@LaunchedEffect
-        if (verticalRowListState.isScrollInProgress) return@LaunchedEffect
-        val selection = focusedCatalogSelection.value ?: return@LaunchedEffect
-        if (selection.payload !is ModernPayload.Catalog) return@LaunchedEffect
-        val expansionDelayMs = if (cinemaPresentation) {
-            520L
-        } else {
-            (uiState.focusedPosterBackdropExpandDelaySeconds.coerceAtLeast(0) * 1000L).coerceAtLeast(150L)
+        if (!shouldActivateFocusedPosterFlow) {
+            expandedCatalogFocusKey.value = null
+            return@LaunchedEffect
         }
-        delay(expansionDelayMs)
-        if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return@LaunchedEffect
-        if (shouldActivateFocusedPosterFlow &&
-            !isSidebarExpanded.value &&
-            !verticalRowListState.isScrollInProgress &&
-            focusedCatalogSelection.value?.focusKey == selection.focusKey
-        ) {
+        if (isSidebarExpanded.value) {
+            expandedCatalogFocusKey.value = null
+            return@LaunchedEffect
+        }
+        if (verticalRowListState.isScrollInProgress) {
+            if (!cinemaPresentation) {
+                expandedCatalogFocusKey.value = null
+            }
+            return@LaunchedEffect
+        }
+        val selection = focusedCatalogSelection.value ?: run {
+            expandedCatalogFocusKey.value = null
+            return@LaunchedEffect
+        }
+        if (selection.payload !is ModernPayload.Catalog) {
+            expandedCatalogFocusKey.value = null
+            return@LaunchedEffect
+        }
+        if (cinemaPresentation) {
+            // Expand immediately as soon as user scrolls to this title (matching Netflix TV)
             expandedCatalogFocusKey.value = selection.focusKey
+        } else {
+            expandedCatalogFocusKey.value = null
+            val expansionDelayMs = (uiState.focusedPosterBackdropExpandDelaySeconds.coerceAtLeast(0) * 1000L).coerceAtLeast(150L)
+            delay(expansionDelayMs)
+            if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return@LaunchedEffect
+            if (shouldActivateFocusedPosterFlow &&
+                !isSidebarExpanded.value &&
+                !verticalRowListState.isScrollInProgress &&
+                focusedCatalogSelection.value?.focusKey == selection.focusKey
+            ) {
+                expandedCatalogFocusKey.value = selection.focusKey
+            }
         }
     }
 
@@ -1125,7 +1142,6 @@ fun ModernHomeContent(
                             val defaultInset = with(localDensity) { MODERN_ROW_HEADER_FOCUS_INSET.toPx() }
                             return offset - defaultInset
                         }
-                        if (expandedCatalogFocusKey.value != null) return 0f
                         if (abs(offset - normalTopInsetPx) <= tolerancePx) return 0f
                         val distance = offset - normalTopInsetPx
                         if (distance < 0f && !verticalRowListState.canScrollBackward) return 0f

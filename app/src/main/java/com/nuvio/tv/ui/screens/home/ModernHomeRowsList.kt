@@ -94,6 +94,7 @@ internal fun ModernHomeRowsList(
     catalogBottomPadding: Dp,
     trailerContentAlpha: () -> Float,
     verticalRowBringIntoViewSpec: BringIntoViewSpec,
+    onHorizontalNavigation: (() -> Unit)? = null,
     onRowItemFocusedInternal: (String, Int, Boolean) -> Unit,
     onNavigateToDetail: (String, String, String) -> Unit,
     onNavigateToFolderDetail: (String, String) -> Unit,
@@ -310,6 +311,11 @@ internal fun ModernHomeRowsList(
                     .focusRestorer { focusRestorerRequester() }
             }
                 .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown &&
+                        (event.key == Key.DirectionLeft || event.key == Key.DirectionRight)
+                    ) {
+                        onHorizontalNavigation?.invoke()
+                    }
                     val firstRowKey = carouselRows.list.firstOrNull()?.key
                     val lastRowKey = carouselRows.list.lastOrNull()?.key
                     if (event.type == KeyEventType.KeyDown &&
@@ -409,6 +415,9 @@ internal fun ModernHomeRowsList(
                         val rowBecameActive = activeRowKey.value != rowKey
                         val itemChanged = activeItemIndex.value != index
                         
+                        if (!rowBecameActive && itemChanged) {
+                            onHorizontalNavigation?.invoke()
+                        }
                         if (rowBecameActive || itemChanged) {
                             val now = System.currentTimeMillis()
                             val timeSinceLastHeroNav = now - lastHeroNavigationAtMs.value

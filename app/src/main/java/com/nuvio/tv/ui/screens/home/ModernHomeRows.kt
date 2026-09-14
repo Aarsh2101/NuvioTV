@@ -364,13 +364,9 @@ private fun ModernCatalogRowItem(
     // Expansion is armed from a parent-level focusKey timer that can outlive real
     // card focus (e.g. user moves left into the sidebar). Never show the expanded
     // backdrop on a card that is not actually focused (#2815).
-    val effectiveBackdropExpanded by remember(isBackdropExpanded, suppressCardExpansionForHeroTrailer, cinemaMode) {
+    val effectiveBackdropExpanded by remember(isBackdropExpanded, suppressCardExpansionForHeroTrailer) {
         derivedStateOf {
-            if (cinemaMode) {
-                isCardFocused && !suppressCardExpansionForHeroTrailer
-            } else {
-                isCardFocused && isBackdropExpanded() && !suppressCardExpansionForHeroTrailer
-            }
+            isCardFocused && isBackdropExpanded() && !suppressCardExpansionForHeroTrailer
         }
     }
 
@@ -568,8 +564,12 @@ internal fun ModernRowSection(
         pinnedItemKey.value = null
         pinSpent.value = true
     }
+    val isContinueWatchingRow = row.key == MODERN_CONTINUE_WATCHING_ROW_KEY || row.key == MODERN_UPCOMING_ROW_KEY
+    val extraBottomPadding = if (cinemaMode && isContinueWatchingRow) 56.dp else 0.dp
     Column(
-        modifier = Modifier.then(
+        modifier = Modifier
+            .padding(bottom = extraBottomPadding)
+            .then(
             if (blockingFocusExit.value) {
                 Modifier.focusProperties {
                     up = FocusRequester.Cancel
@@ -944,9 +944,18 @@ internal fun ModernRowSection(
                 null
             }
 
+            val catalogCardHeight = if (useLandscapePosters) landscapeCatalogCardHeight else portraitCatalogCardHeight
+            val stableRowModifier = if (cinemaMode && effectiveExpandEnabled && !isContinueWatchingRow) {
+                Modifier.height(catalogCardHeight + 68.dp)
+            } else {
+                Modifier
+            }
+
             LazyRow(
                 state = rowListState,
+                verticalAlignment = Alignment.Top,
                 modifier = Modifier
+                    .then(stableRowModifier)
                     .recompositionHighlighter()
                     .focusRequester(rowFocusRequester)
                     .focusRestorer {
@@ -1046,12 +1055,11 @@ internal fun ModernRowSection(
                                 effectiveExpandEnabled,
                                 isRowScrollingState,
                                 expandedCatalogFocusKey,
-                                expandedFocusKey,
-                                cinemaMode
+                                expandedFocusKey
                             ) {
                                 {
                                     effectiveExpandEnabled &&
-                                        (cinemaMode || !isRowScrollingState.value || isExpansionScrollActive) &&
+                                        (!isRowScrollingState.value || isExpansionScrollActive) &&
                                         expandedCatalogFocusKey.value == expandedFocusKey
                                 }
                             }
@@ -1154,7 +1162,7 @@ private fun ModernCarouselCard(
         animateDpAsState(
             targetValue = targetCardWidth,
             animationSpec = tween(
-                durationMillis = 280,
+                durationMillis = if (targetCardWidth > cardWidth) 260 else 180,
                 easing = FastOutSlowInEasing
             ),
             label = "modernCardWidth"
@@ -1437,7 +1445,7 @@ private fun ModernCarouselCard(
             border = CardDefaults.border(focusedBorder = effectiveFocusedBorder),
             scale = CardDefaults.scale(
                 scale = 1f,
-                focusedScale = if (cinemaMode && isBackdropExpanded) 1f else if (cinemaMode) 1.05f else 1f
+                focusedScale = 1f
             ),
             glow = effectiveCardGlow
         ) {
@@ -1639,15 +1647,15 @@ private fun ModernCarouselCard(
             AnimatedVisibility(
                 visible = isBackdropExpanded,
                 enter = fadeIn(
-                    animationSpec = tween(durationMillis = 240, delayMillis = 40, easing = FastOutSlowInEasing)
+                    animationSpec = tween(durationMillis = 220, delayMillis = 40, easing = FastOutSlowInEasing)
                 ) + expandVertically(
-                    animationSpec = tween(durationMillis = 240, delayMillis = 40, easing = FastOutSlowInEasing),
+                    animationSpec = tween(durationMillis = 220, delayMillis = 40, easing = FastOutSlowInEasing),
                     expandFrom = Alignment.Top
                 ),
                 exit = fadeOut(
-                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                    animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing)
                 ) + shrinkVertically(
-                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                    animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing),
                     shrinkTowards = Alignment.Top
                 )
             ) {

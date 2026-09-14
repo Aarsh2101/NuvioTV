@@ -12,6 +12,7 @@ import androidx.activity.compose.BackHandler
 import com.nuvio.tv.ui.navigation.Screen
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.BringIntoViewSpec
@@ -302,6 +303,8 @@ fun ModernHomeContent(
     }
     val activeRowKey = remember { mutableStateOf<String?>(null) }
     val activeItemIndex = remember { mutableIntStateOf(0) }
+    val lastHorizontalNavAtMs = remember { mutableLongStateOf(0L) }
+    val onHorizontalNavLambda = remember { { lastHorizontalNavAtMs.longValue = System.currentTimeMillis() } }
     var initialAutoSelectedKey by remember { mutableStateOf<String?>(null) }
     val pendingRowFocusKey = remember { mutableStateOf<String?>(null) }
     val pendingRowFocusIndex = remember { mutableStateOf<Int?>(null) }
@@ -422,9 +425,7 @@ fun ModernHomeContent(
             return@LaunchedEffect
         }
         if (verticalRowListState.isScrollInProgress) {
-            if (!cinemaPresentation) {
-                expandedCatalogFocusKey.value = null
-            }
+            expandedCatalogFocusKey.value = null
             return@LaunchedEffect
         }
         val selection = focusedCatalogSelection.value ?: run {
@@ -435,21 +436,16 @@ fun ModernHomeContent(
             expandedCatalogFocusKey.value = null
             return@LaunchedEffect
         }
-        if (cinemaPresentation) {
-            // Expand immediately as soon as user scrolls to this title (matching Netflix TV)
+        expandedCatalogFocusKey.value = null
+        val expansionDelayMs = if (cinemaPresentation) 220L else (uiState.focusedPosterBackdropExpandDelaySeconds.coerceAtLeast(0) * 1000L).coerceAtLeast(150L)
+        delay(expansionDelayMs)
+        if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return@LaunchedEffect
+        if (shouldActivateFocusedPosterFlow &&
+            !isSidebarExpanded.value &&
+            !verticalRowListState.isScrollInProgress &&
+            focusedCatalogSelection.value?.focusKey == selection.focusKey
+        ) {
             expandedCatalogFocusKey.value = selection.focusKey
-        } else {
-            expandedCatalogFocusKey.value = null
-            val expansionDelayMs = (uiState.focusedPosterBackdropExpandDelaySeconds.coerceAtLeast(0) * 1000L).coerceAtLeast(150L)
-            delay(expansionDelayMs)
-            if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return@LaunchedEffect
-            if (shouldActivateFocusedPosterFlow &&
-                !isSidebarExpanded.value &&
-                !verticalRowListState.isScrollInProgress &&
-                focusedCatalogSelection.value?.focusKey == selection.focusKey
-            ) {
-                expandedCatalogFocusKey.value = selection.focusKey
-            }
         }
     }
 
@@ -1132,20 +1128,41 @@ fun ModernHomeContent(
             }
             val heroBackdropHeight = remember(screenHeight, rowsViewportHeight, rowTitleHeight) { (screenHeight - rowsViewportHeight + rowTitleHeight + 14.dp).coerceAtMost(screenHeight) }
             val verticalRowBringIntoViewSpec = remember(localDensity, defaultBringIntoViewSpec, cinemaPresentation) {
-                val normalTopInsetPx = with(localDensity) { 108.dp.toPx() }
-                val tolerancePx = with(localDensity) { 20.dp.toPx() }
+                val minAllowedTopPx = with(localDensity) { 36.dp.toPx() }
+                val maxAllowedTopPx = with(localDensity) { 110.dp.toPx() }
+                val targetTopInsetPx = with(localDensity) { 56.dp.toPx() }
                 @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
                 object : BringIntoViewSpec {
-                    override val scrollAnimationSpec: AnimationSpec<Float> = defaultBringIntoViewSpec.scrollAnimationSpec
+                    override val scrollAnimationSpec: AnimationSpec<Float> = if (cinemaPresentation) {
+                        spring(
+                            dampingRatio = 1.0f,
+                            stiffness = 380f
+                        )
+                    } else {
+                        defaultBringIntoViewSpec.scrollAnimationSpec
+                    }
                     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
                         if (!cinemaPresentation) {
                             val defaultInset = with(localDensity) { MODERN_ROW_HEADER_FOCUS_INSET.toPx() }
                             return offset - defaultInset
                         }
-                        if (abs(offset - normalTopInsetPx) <= tolerancePx) return 0f
-                        val distance = offset - normalTopInsetPx
-                        if (distance < 0f && !verticalRowListState.canScrollBackward) return 0f
-                        return distance
+                        val now = System.currentTimeMillis()
+                        val deltaNav = now - lastHorizontalNavAtMs.longValue
+                        val expandedKey = expandedCatalogFocusKey.value
+                        val activeKey = activeRowKey.value
+                        val firstRowKey = carouselRows.list.firstOrNull()?.key
+
+                        val res = when {
+                            expandedKey != null -> 0f
+                            deltaNav < 350L -> 0f
+                            activeKey == firstRowKey && verticalRowListState.firstVisibleItemIndex == 0 -> 0f
+                            offset in minAllowedTopPx..maxAllowedTopPx -> 0f
+                            else -> {
+                                val distance = offset - targetTopInsetPx
+                                if (distance < 0f && !verticalRowListState.canScrollBackward) 0f else distance
+                            }
+                        }
+                        return res
                     }
                 }
             }
@@ -1396,6 +1413,7 @@ fun ModernHomeContent(
                 catalogBottomPadding = NuvioTheme.spacing.none,
                 trailerContentAlpha = stableTrailerContentAlphaLambda,
                 verticalRowBringIntoViewSpec = verticalRowBringIntoViewSpec,
+                onHorizontalNavigation = onHorizontalNavLambda,
                 onRowItemFocusedInternal = onRowItemFocusedInternalLambda,
                 onNavigateToDetail = onNavigateToDetail,
                 onNavigateToFolderDetail = onNavigateToFolderDetail,

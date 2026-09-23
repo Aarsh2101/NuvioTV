@@ -162,7 +162,6 @@ fun ModernHomeContent(
     val sidebarExpanded = LocalSidebarExpanded.current
     val isSidebarExpanded = remember(sidebarExpanded) { derivedStateOf { sidebarExpanded } }
     val lifecycleOwner = LocalLifecycleOwner.current
-    val cinemaFocusController = LocalCinemaFocusController.current
     // Cinema mode is an opt-in visual preset: cinematic landscape rails and a
     // full-bleed Apple-TV-style hero, while keeping trailers disabled by default
     // so the redesign does not spend playback resources during browsing.
@@ -179,12 +178,10 @@ fun ModernHomeContent(
             effectiveAutoplayEnabled &&
             trailerPlaybackTarget == FocusedPosterTrailerPlaybackTarget.EXPANDED_CARD
     val effectiveExpandEnabled =
-        if (cinemaPresentation) {
-            true
-        } else {
+        !cinemaPresentation && (
             (uiState.focusedPosterBackdropExpandEnabled && !useLandscapePosters) ||
             landscapeExpandedCardMode
-        }
+        )
     val shouldActivateFocusedPosterFlow =
         effectiveExpandEnabled ||
             (effectiveAutoplayEnabled &&
@@ -328,10 +325,7 @@ fun ModernHomeContent(
                 genres = hero.genres.take(3).asStable(),
                 poster = hero.poster,
                 backdrop = hero.backdropUrl,
-                imageUrl = hero.backdropUrl ?: hero.poster,
-                itemId = hero.id,
-                itemType = hero.apiType,
-                addonBaseUrl = hero.sourceAddonBaseUrl ?: ""
+                imageUrl = hero.backdropUrl ?: hero.poster
             )
         }
         matchingHero ?: carouselRows.list.firstOrNull()?.items?.list?.firstOrNull()?.heroPreview
@@ -547,10 +541,8 @@ fun ModernHomeContent(
                 activeRowKey.value = resolvedRow.key
                 activeItemIndex.intValue = resolvedIndex
                 focusedItemByRow[resolvedRow.key] = resolvedIndex
-                if (!cinemaPresentation) {
-                    heroItem.value = resolvedRow.items.getOrNull(resolvedIndex)?.heroPreview
-                        ?: resolvedRow.items.firstOrNull()?.heroPreview
-                }
+                heroItem.value = resolvedRow.items.getOrNull(resolvedIndex)?.heroPreview
+                    ?: resolvedRow.items.firstOrNull()?.heroPreview
                 pendingRowFocusKey.value = resolvedRow.key
                 pendingRowFocusIndex.value = resolvedIndex
                 pendingRowFocusNonce.intValue++
@@ -578,24 +570,14 @@ fun ModernHomeContent(
             activeRowKey.value = resolvedActive.key
             activeItemIndex.intValue = resolvedIndex
             focusedItemByRow[resolvedActive.key] = resolvedIndex
-            if (!cinemaPresentation) {
-                heroItem.value = resolvedActive.items.getOrNull(resolvedIndex)?.heroPreview
-                    ?: resolvedActive.items.firstOrNull()?.heroPreview
-            }
+            heroItem.value = resolvedActive.items.getOrNull(resolvedIndex)?.heroPreview
+                ?: resolvedActive.items.firstOrNull()?.heroPreview
 
             if (!focusState.hasSavedFocus && !hadActiveRow) {
-                if (cinemaPresentation) {
-                    if (cinemaFocusController?.focusedNavRoute == null) {
-                        cinemaFocusController?.heroPlayFocusRequester?.let { req ->
-                            runCatching { req.requestFocus() }
-                        }
-                    }
-                } else {
-                    initialAutoSelectedKey = resolvedActive.key
-                    pendingRowFocusKey.value = resolvedActive.key
-                    pendingRowFocusIndex.value = resolvedIndex
-                    pendingRowFocusNonce.intValue++
-                }
+                initialAutoSelectedKey = resolvedActive.key
+                pendingRowFocusKey.value = resolvedActive.key
+                pendingRowFocusIndex.value = resolvedIndex
+                pendingRowFocusNonce.intValue++
             }
         }
 
@@ -612,17 +594,8 @@ fun ModernHomeContent(
         ) {
             return@LaunchedEffect
         }
-        if (cinemaPresentation && (cinemaFocusController?.focusedNavRoute != null || cinemaFocusController?.isHeroVisible == true)) {
-            return@LaunchedEffect
-        }
         if (targetIndex > 0 || targetOffset > 0) {
             verticalRowListState.scrollToItem(targetIndex, targetOffset)
-        }
-    }
-
-    LaunchedEffect(cinemaContentType) {
-        if (cinemaPresentation) {
-            verticalRowListState.scrollToItem(0, 0)
         }
     }
 
@@ -1114,8 +1087,9 @@ fun ModernHomeContent(
                 }
             }
             val heroBackdropHeight = remember(screenHeight, rowsViewportHeight, rowTitleHeight) { (screenHeight - rowsViewportHeight + rowTitleHeight + 14.dp).coerceAtMost(screenHeight) }
-            val verticalRowBringIntoViewSpec = remember(localDensity, defaultBringIntoViewSpec, cinemaPresentation) {
+            val verticalRowBringIntoViewSpec = remember(localDensity, defaultBringIntoViewSpec, cinemaPresentation, carouselRows) {
                 val normalTopInsetPx = with(localDensity) { 56.dp.toPx() }
+                val firstRowTopInsetPx = with(localDensity) { 340.dp.toPx() }
                 @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
                 object : BringIntoViewSpec {
                     override val scrollAnimationSpec: AnimationSpec<Float> = defaultBringIntoViewSpec.scrollAnimationSpec
@@ -1124,16 +1098,20 @@ fun ModernHomeContent(
                             val defaultInset = with(localDensity) { MODERN_ROW_HEADER_FOCUS_INSET.toPx() }
                             return offset - defaultInset
                         }
-                        if (abs(offset - normalTopInsetPx) < 1f) return 0f
-                        val distance = offset - normalTopInsetPx
+                        val isFirstRow = activeRowKey.value == carouselRows.list.firstOrNull()?.key
+                        val targetInset = if (isFirstRow) firstRowTopInsetPx else normalTopInsetPx
+                        if (abs(offset - targetInset) < 1f) return 0f
+                        val distance = offset - targetInset
                         if (distance < 0f && !verticalRowListState.canScrollBackward) return 0f
                         return distance
                     }
                 }
             }
-            val isScrolledDownState = remember(verticalRowListState) {
+            val isScrolledDownState = remember(verticalRowListState, carouselRows) {
                 derivedStateOf {
-                    verticalRowListState.firstVisibleItemIndex > 0 ||
+                    val isFirstRow = activeRowKey.value == carouselRows.list.firstOrNull()?.key
+                    if (isFirstRow) false
+                    else verticalRowListState.firstVisibleItemIndex > 0 ||
                         verticalRowListState.firstVisibleItemScrollOffset > 40
                 }
             }
@@ -1149,6 +1127,7 @@ fun ModernHomeContent(
                 label = "billboardTranslationY"
             )
             val contentFocusRequester = LocalContentFocusRequester.current
+            val cinemaFocusController = LocalCinemaFocusController.current
             val cinemaTopNavFocusRequester = if (cinemaPresentation) {
                 val activeRoute = cinemaFocusController?.activeCinemaCategory
                     ?: cinemaFocusController?.selectedRoute
@@ -1156,36 +1135,6 @@ fun ModernHomeContent(
                 cinemaFocusController?.requester(activeRoute)
             } else {
                 null
-            }
-
-            LaunchedEffect(isScrolledDown, cinemaPresentation, cinemaFocusController?.focusedNavRoute) {
-                if (cinemaPresentation) {
-                    cinemaFocusController?.isHeroVisible = !isScrolledDown || cinemaFocusController?.focusedNavRoute != null
-                }
-            }
-
-            LaunchedEffect(cinemaFocusController?.focusedNavRoute) {
-                if (cinemaPresentation && cinemaFocusController?.focusedNavRoute != null) {
-                    if (verticalRowListState.firstVisibleItemIndex > 0 || verticalRowListState.firstVisibleItemScrollOffset > 0) {
-                        verticalRowListState.animateScrollToItem(0, 0)
-                    }
-                }
-            }
-
-            val rowUpFocusRequester = if (cinemaPresentation) {
-                cinemaFocusController?.heroPlayFocusRequester ?: cinemaTopNavFocusRequester
-            } else {
-                cinemaTopNavFocusRequester
-            }
-            val onHeroFocusedLambda = remember(backScrollScope, verticalRowListState) {
-                {
-                    backScrollScope.launch {
-                        if (verticalRowListState.firstVisibleItemIndex > 0 || verticalRowListState.firstVisibleItemScrollOffset > 0) {
-                            verticalRowListState.animateScrollToItem(0, 0)
-                        }
-                    }
-                    Unit
-                }
             }
             val heroMediaWidthPx = remember(screenWidth, localDensity, fullScreenBackdrop) {
                 with(localDensity) {
@@ -1264,24 +1213,6 @@ fun ModernHomeContent(
                 }
             }
 
-            val onHeroPlayClick: (() -> Unit)? = if (cinemaPresentation) {
-                {
-                    val preview = heroSceneStateLambda().preview
-                    if (preview?.itemId != null && preview.itemType != null) {
-                        onNavigateToDetail(preview.itemId, preview.itemType, preview.addonBaseUrl ?: "")
-                    }
-                }
-            } else null
-
-            val onHeroMoreInfoClick: (() -> Unit)? = if (cinemaPresentation) {
-                {
-                    val preview = heroSceneStateLambda().preview
-                    if (preview?.itemId != null && preview.itemType != null) {
-                        onNavigateToDetail(preview.itemId, preview.itemType, preview.addonBaseUrl ?: "")
-                    }
-                }
-            } else null
-
             HeroTitleBlock(
                 previewProvider = {
                     val state = heroSceneStateLambda()
@@ -1301,14 +1232,6 @@ fun ModernHomeContent(
                         state.fullScreenBackdrop && shouldPlayTrailerLambda() && heroTrailerRenderedLambda()
                     }
                 },
-                cinemaPresentation = cinemaPresentation,
-                onPlayClick = onHeroPlayClick,
-                onMoreInfoClick = onHeroMoreInfoClick,
-                playFocusRequester = cinemaFocusController?.heroPlayFocusRequester,
-                moreInfoFocusRequester = cinemaFocusController?.heroMoreInfoFocusRequester,
-                downFocusRequester = contentFocusRequester,
-                upFocusRequester = cinemaTopNavFocusRequester,
-                onHeroFocused = onHeroFocusedLambda,
                 modifier = heroMetadataModifier.graphicsLayer {
                     alpha = billboardAlpha
                     translationY = billboardTranslationY
@@ -1373,7 +1296,7 @@ fun ModernHomeContent(
                 isFastScrolling = isFastScrolling,
                 onFastScrollingChanged = onFastScrollingChangedLambda,
                 contentFocusRequester = contentFocusRequester,
-                cinemaTopNavFocusRequester = rowUpFocusRequester,
+                cinemaTopNavFocusRequester = cinemaTopNavFocusRequester,
                 rowsViewportHeight = rowsViewportHeight,
                 catalogBottomPadding = NuvioTheme.spacing.none,
                 trailerContentAlpha = stableTrailerContentAlphaLambda,

@@ -63,10 +63,7 @@ data class HeroPreview(
      *  even after navigation away and back. */
     val frozenBackdropUrl: String? = null,
     /** Same idea for the logo URL. */
-    val frozenLogoUrl: String? = null,
-    val itemId: String? = null,
-    val itemType: String? = null,
-    val addonBaseUrl: String? = null
+    val frozenLogoUrl: String? = null
 )
 
 @Immutable

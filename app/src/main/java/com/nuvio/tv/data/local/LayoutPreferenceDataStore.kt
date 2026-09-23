@@ -157,10 +157,6 @@ class LayoutPreferenceDataStore @Inject constructor(
         }
     }
 
-    val isCinemaLayout: Flow<Boolean> = profileFlow { prefs ->
-        prefs[layoutKey] == HomeLayout.CINEMA.name
-    }
-
     val continueWatchingEnabled: Flow<Boolean> = profileFlow { prefs ->
         prefs[continueWatchingEnabledKey] ?: true
     }
@@ -227,11 +223,7 @@ class LayoutPreferenceDataStore @Inject constructor(
     }
 
     val modernSidebarEnabled: Flow<Boolean> = profileFlow { prefs ->
-        val selectedLayout = prefs[layoutKey]
-        val enabled = prefs[modernSidebarEnabledKey] ?: prefs[legacyModernSidebarEnabledKey] ?: false
-        // Cinema owns the top navigation surface; do not render the legacy sidebar
-        // underneath it. Other layouts retain the user's sidebar preference.
-        enabled && selectedLayout != HomeLayout.CINEMA.name
+        prefs[modernSidebarEnabledKey] ?: prefs[legacyModernSidebarEnabledKey] ?: false
     }
 
     val modernSidebarBlurEnabled: Flow<Boolean> = profileFlow { prefs ->

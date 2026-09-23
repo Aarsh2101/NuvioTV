@@ -2,8 +2,6 @@ package com.nuvio.tv.ui.screens.search
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.screens.home.HeroBackdropState
-import com.nuvio.tv.ui.screens.home.LocalCinemaFocusController
-import com.nuvio.tv.ui.navigation.Screen
 
 import android.Manifest
 import android.content.Intent
@@ -152,12 +150,6 @@ fun SearchScreen(
     val strVoiceUnavailable = stringResource(R.string.search_voice_unavailable)
     val voiceFocusRequester = remember { FocusRequester() }
     val searchFocusRequester = remember { FocusRequester() }
-    val cinemaFocusController = LocalCinemaFocusController.current
-    val isCinemaNavActive = cinemaFocusController != null &&
-        (cinemaFocusController.focusedNavRoute != null || cinemaFocusController.pendingNavigationRoute != null)
-    val cinemaTopNavFocusRequester = remember(cinemaFocusController) {
-        cinemaFocusController?.requester(Screen.Search.route)
-    }
     val discoverFirstItemFocusRequester = remember { FocusRequester() }
     val recentClearHistoryFocusRequester = remember { FocusRequester() }
     val discoverButtonFocusRequester = remember { FocusRequester() }
@@ -495,7 +487,6 @@ fun SearchScreen(
     val initialFocusRequester = if (isVoiceSearchAvailable) voiceFocusRequester else searchFocusRequester
 
     LaunchedEffect(Unit) {
-        if (isCinemaNavActive) return@LaunchedEffect
         if (viewModel.hasSavedSearchFocus) return@LaunchedEffect
         if (pendingDiscoverRestoreOnResume || restoreDiscoverFocus) return@LaunchedEffect
         repeat(2) { withFrameNanos { } }
@@ -539,7 +530,7 @@ fun SearchScreen(
                     // Returning from details — don't steal focus, CatalogRowSection
                     // already restored it or will restore it via focusedItemIndex.
                     didRestoreSearchFocus.value = false
-                } else if (!latestShouldKeepSearchFocus && !isCinemaNavActive) {
+                } else if (!latestShouldKeepSearchFocus) {
                     // Keep resume and entry consistent; ON_RESUME also fires on entry.
                     coroutineScope.launch {
                         repeat(2) { withFrameNanos { } }
@@ -555,25 +546,6 @@ fun SearchScreen(
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
-    }
-
-    if (cinemaFocusController != null) {
-        NetflixTvSearchContent(
-            uiState = uiState,
-            onQueryChanged = handleQueryChanged,
-            onNavigateToDetail = onNavigateToDetail,
-            onItemFocus = { id, type -> viewModel.prefetchMetaOnFocus(id, type) },
-            onEnsureDiscoverLoaded = { viewModel.ensureDiscoverLoaded(force = true) },
-            cinemaTopNavFocusRequester = cinemaTopNavFocusRequester,
-            contentFocusRequester = cinemaFocusController.contentFocusRequester,
-            onNavigateBackToHome = {
-                cinemaFocusController.activeCinemaCategory = Screen.Home.route
-                cinemaFocusController.requester(Screen.Home.route).let {
-                    runCatching { it.requestFocus() }
-                }
-            }
-        )
-        return
     }
 
     Box(
@@ -681,7 +653,6 @@ fun SearchScreen(
                     showDiscoverButton = uiState.discoverLocation == DiscoverLocation.IN_SEARCH,
                     keyboardController = keyboardController,
                     clearHistoryFocusRequester = if (showRecentSearches) recentClearHistoryFocusRequester else null,
-                    cinemaTopNavFocusRequester = cinemaTopNavFocusRequester,
                     isScreenActive = isScreenActive
                 )
             }
@@ -1205,7 +1176,6 @@ private fun SearchInputField(
     showDiscoverButton: Boolean,
     keyboardController: androidx.compose.ui.platform.SoftwareKeyboardController?,
     clearHistoryFocusRequester: FocusRequester?,
-    cinemaTopNavFocusRequester: FocusRequester? = null,
     isScreenActive: Boolean = true
 ) {
     var isDiscoverButtonFocused by remember { mutableStateOf(false) }
@@ -1225,11 +1195,6 @@ private fun SearchInputField(
                 modifier = Modifier
                     .then(
                         discoverFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
-                    )
-                    .then(
-                        if (cinemaTopNavFocusRequester != null) {
-                            Modifier.focusProperties { up = cinemaTopNavFocusRequester }
-                        } else Modifier
                     )
                     .onFocusChanged { isDiscoverButtonFocused = it.isFocused }
                     .size(NuvioTheme.spacing.huge)
@@ -1324,11 +1289,6 @@ private fun SearchInputField(
                                 Modifier
                             }
                         )
-                        .then(
-                            if (cinemaTopNavFocusRequester != null) {
-                                Modifier.focusProperties { up = cinemaTopNavFocusRequester }
-                            } else Modifier
-                        )
                         .onFocusChanged { isVoiceButtonFocused = it.isFocused }
                         .size(NuvioTheme.spacing.huge)
                         .border(
@@ -1360,25 +1320,12 @@ private fun SearchInputField(
                 .focusRequester(searchFocusRequester)
                 .focusProperties {
                     canFocus = isScreenActive
-                    if (cinemaTopNavFocusRequester != null) {
-                        up = cinemaTopNavFocusRequester
-                    }
                 }
                 .onFocusChanged { focusState ->
                     onSearchFieldFocusChanged(focusState.isFocused)
                 }
                 .onPreviewKeyEvent { keyEvent ->
                     when (keyEvent.nativeKeyEvent.keyCode) {
-                        KeyEvent.KEYCODE_DPAD_UP -> {
-                            if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
-                                if (cinemaTopNavFocusRequester != null) {
-                                    keyboardController?.hide()
-                                    runCatching { cinemaTopNavFocusRequester.requestFocus() }
-                                    return@onPreviewKeyEvent true
-                                }
-                            }
-                        }
-
                         KeyEvent.KEYCODE_ENTER,
                         KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                             if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {

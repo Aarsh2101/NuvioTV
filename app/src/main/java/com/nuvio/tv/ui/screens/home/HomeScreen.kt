@@ -2,11 +2,9 @@ package com.nuvio.tv.ui.screens.home
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
-import com.nuvio.tv.ui.navigation.Screen
 import android.util.Log
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -48,7 +46,6 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.domain.model.HomeLayout
-import com.nuvio.tv.domain.model.isModernFamily
 import com.nuvio.tv.domain.model.LibraryListTab
 import com.nuvio.tv.domain.model.localizedTitle
 import com.nuvio.tv.domain.model.LibrarySourceMode
@@ -98,24 +95,9 @@ fun HomeScreen(
     onContinueWatchingStartFromBeginning: (ContinueWatchingItem) -> Unit = onContinueWatchingClick,
     onContinueWatchingPlayManually: (ContinueWatchingItem) -> Unit = onContinueWatchingClick,
     onNavigateToCatalogSeeAll: (String, String, String) -> Unit = { _, _, _ -> },
-    onNavigateToFolderDetail: (String, String) -> Unit = { _, _ -> },
-    cinemaMode: Boolean = false,
-    cinemaContentType: String? = null
+    onNavigateToFolderDetail: (String, String) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val cinemaFocusController = LocalCinemaFocusController.current
-    val isCinema = cinemaMode || cinemaContentType != null || uiState.homeLayout == HomeLayout.CINEMA
-    val activeCategory = cinemaFocusController?.activeCinemaCategory
-    val effectiveCinemaContentType = when {
-        cinemaContentType != null -> cinemaContentType
-        isCinema && activeCategory == Screen.CinemaMovies.route -> "movie"
-        isCinema && activeCategory == Screen.CinemaShows.route -> "series"
-        else -> null
-    }
-
-    BackHandler(enabled = isCinema && effectiveCinemaContentType != null) {
-        cinemaFocusController?.activeCinemaCategory = Screen.Home.route
-    }
 
     // Home was the only major screen without a lifecycle observer, so nothing ever told it to
     // look at its catalogs again.
@@ -139,7 +121,7 @@ fun HomeScreen(
     val hasCollectionContent = uiState.homeRows.any { it is HomeRow.CollectionRow }
     val hasHeroContent = uiState.heroItems.isNotEmpty()
     val modernPresentationReady =
-        !uiState.homeLayout.isModernFamily ||
+        uiState.homeLayout != HomeLayout.MODERN ||
             modernPresentation.rows.list.isNotEmpty() ||
             (uiState.heroSectionEnabled && hasHeroContent && !hasCatalogContent && !hasCollectionContent)
     var showHomeContentWithAnimation by rememberSaveable { mutableStateOf(false) }
@@ -151,7 +133,7 @@ fun HomeScreen(
     var posterOptionsTarget by remember { mutableStateOf<HomePosterOptionsTarget?>(null) }
 
     LaunchedEffect(uiState.homeLayout) {
-        if (!uiState.homeLayout.isModernFamily) {
+        if (uiState.homeLayout != HomeLayout.MODERN) {
             HeroBackdropState.update(null)
         }
     }
@@ -381,7 +363,7 @@ fun HomeScreen(
                                 )
                         }
                     ) {
-                        when (if (isCinema) HomeLayout.CINEMA else uiState.homeLayout) {
+                        when (uiState.homeLayout) {
                             HomeLayout.CLASSIC -> ClassicHomeRoute(
                                 viewModel = viewModel,
                                 uiState = uiState,
@@ -412,10 +394,8 @@ fun HomeScreen(
                                 onCatalogItemLongPress = onCatalogItemLongPress
                             )
 
-                            HomeLayout.MODERN, HomeLayout.CINEMA -> ModernHomeRoute(
+                            HomeLayout.MODERN -> ModernHomeRoute(
                                 viewModel = viewModel,
-                                cinemaMode = isCinema,
-                                cinemaContentType = effectiveCinemaContentType,
                                 uiState = uiState,
                                 onNavigateToDetail = onNavigateToDetailStable,
                                 onContinueWatchingClick = onContinueWatchingClickStable,
@@ -650,8 +630,6 @@ private fun GridHomeRoute(
 @Composable
 private fun ModernHomeRoute(
     viewModel: HomeViewModel,
-    cinemaMode: Boolean = false,
-    cinemaContentType: String? = null,
     uiState: HomeUiState,
     onNavigateToDetail: (String, String, String) -> Unit,
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit,
@@ -698,8 +676,6 @@ private fun ModernHomeRoute(
     }
     ModernHomeContent(
         uiState = uiState,
-        cinemaMode = cinemaMode,
-        cinemaContentType = cinemaContentType,
         modernPresentation = modernPresentation,
         focusState = focusState,
         scrollToTopTrigger = scrollToTopTrigger,

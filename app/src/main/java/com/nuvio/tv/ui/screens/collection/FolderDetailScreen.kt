@@ -966,8 +966,7 @@ private fun FollowLayoutContent(
                 )
             }
         }
-        HomeLayout.MODERN, HomeLayout.CINEMA -> ModernHomeContent(
-            cinemaMode = uiState.homeLayout == HomeLayout.CINEMA,
+        HomeLayout.MODERN -> ModernHomeContent(
             uiState = homeState,
             modernPresentation = homeState.modernHomePresentation,
             focusState = focusState,

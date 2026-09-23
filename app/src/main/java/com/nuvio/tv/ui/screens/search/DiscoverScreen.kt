@@ -39,13 +39,6 @@ import kotlin.math.roundToInt
 fun DiscoverScreen(
     viewModel: SearchViewModel = hiltViewModel(),
     showBuiltInHeader: Boolean = true,
-    headerTitle: String? = null,
-    initialContentType: String? = null,
-    lockContentType: Boolean = false,
-    forceDiscoverEnabled: Boolean = false,
-    /** Enables the Cinema-only compact header and collapse-on-grid-focus behavior. */
-    cinemaBrowse: Boolean = false,
-    contentTopPadding: androidx.compose.ui.unit.Dp = NuvioTheme.spacing.lg,
     onNavigateToDetail: (String, String, String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -68,16 +61,9 @@ fun DiscoverScreen(
         )
     }
 
-    LaunchedEffect(uiState.discoverLocation, forceDiscoverEnabled) {
-        if (forceDiscoverEnabled || uiState.discoverLocation != DiscoverLocation.OFF) {
-            viewModel.ensureDiscoverLoaded(force = forceDiscoverEnabled)
-        }
-    }
-
-    LaunchedEffect(initialContentType, uiState.discoverInitialized) {
-        val requestedType = initialContentType ?: return@LaunchedEffect
-        if (uiState.discoverInitialized && uiState.selectedDiscoverType != requestedType) {
-            viewModel.onEvent(SearchEvent.SelectDiscoverType(requestedType))
+    LaunchedEffect(uiState.discoverLocation) {
+        if (uiState.discoverLocation != DiscoverLocation.OFF) {
+            viewModel.ensureDiscoverLoaded()
         }
     }
 
@@ -98,7 +84,7 @@ fun DiscoverScreen(
             .fillMaxSize()
             .background(NuvioTheme.colors.Background)
     ) {
-        if (!forceDiscoverEnabled && uiState.discoverLocation == DiscoverLocation.OFF) {
+        if (uiState.discoverLocation == DiscoverLocation.OFF) {
             EmptyScreenState(
                 title = stringResource(R.string.discover_disabled_title),
                 subtitle = stringResource(R.string.discover_disabled_subtitle),
@@ -112,9 +98,6 @@ fun DiscoverScreen(
                 watchedSeriesIds = watchedSeriesIds,
                 focusResults = false,
                 showBuiltInHeader = showBuiltInHeader,
-                headerTitle = headerTitle,
-                showTypeFilter = !lockContentType,
-                cinemaBrowse = cinemaBrowse,
                 firstItemFocusRequester = discoverFirstItemFocusRequester,
                 focusedItemIndex = discoverFocusedItemIndex,
                 shouldRestoreFocusedItem = restoreDiscoverFocus,
@@ -146,7 +129,7 @@ fun DiscoverScreen(
                 onItemLongPress = { item, addonBaseUrl ->
                     viewModel.posterOptions.show(item, addonBaseUrl)
                 },
-                modifier = Modifier.padding(top = contentTopPadding)
+                modifier = Modifier.padding(top = NuvioTheme.spacing.lg)
             )
         }
 

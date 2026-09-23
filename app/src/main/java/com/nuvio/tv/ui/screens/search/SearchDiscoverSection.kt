@@ -4,32 +4,23 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.screens.home.HeroBackdropState
 
 import android.view.KeyEvent as AndroidKeyEvent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -59,8 +50,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import com.nuvio.tv.ui.screens.detail.requestFocusAfterFrames
 import kotlinx.coroutines.delay
@@ -103,9 +92,6 @@ internal fun DiscoverSection(
     watchedSeriesIds: Set<String> = emptySet(),
     focusResults: Boolean,
     showBuiltInHeader: Boolean = true,
-    headerTitle: String? = null,
-    showTypeFilter: Boolean = true,
-    cinemaBrowse: Boolean = false,
     firstItemFocusRequester: FocusRequester,
     focusedItemIndex: Int,
     shouldRestoreFocusedItem: Boolean,
@@ -126,37 +112,9 @@ internal fun DiscoverSection(
     var expandedPicker by remember { mutableStateOf<String?>(null) }
     val filterFocusRequester = remember { FocusRequester() }
     var gridHasFocus by remember { mutableStateOf(false) }
-    var pendingCinemaFilterFocus by remember { mutableStateOf(0) }
 
-    // Cinema hides the filter row while the grid owns focus. Reveal it first and defer the
-    // request until AnimatedVisibility has composed the row; requesting while gridHasFocus is
-    // still true can target a node that is being disposed.
-    fun requestFilters() {
-        if (cinemaBrowse) {
-            gridHasFocus = false
-            pendingCinemaFilterFocus++
-        } else {
-            runCatching { filterFocusRequester.requestFocus() }
-        }
-    }
-
-    LaunchedEffect(pendingCinemaFilterFocus) {
-        if (pendingCinemaFilterFocus == 0) return@LaunchedEffect
-        repeat(3) { withFrameNanos { } }
-        var focused = runCatching { filterFocusRequester.requestFocus() }.getOrDefault(false)
-        var attempt = 0
-        while (!focused && attempt < 6) {
-            withFrameNanos { }
-            focused = runCatching { filterFocusRequester.requestFocus() }.getOrDefault(false)
-            attempt++
-        }
-    }
-
-    // Back is a reliable escape hatch from the poster grid. This existing behavior is kept
-    // for regular Discover, while Cinema additionally gets the same path from DPAD Up at the
-    // first row (see DiscoverGrid below).
     androidx.activity.compose.BackHandler(enabled = gridHasFocus) {
-        requestFilters()
+        try { filterFocusRequester.requestFocus() } catch (_: Exception) {}
     }
 
     val localContext = LocalContext.current
@@ -167,10 +125,7 @@ internal fun DiscoverSection(
     }
     val selectedTypeLabel = localizedTypeLabel(uiState.selectedDiscoverType)
     val selectedCatalogLabel = selectedCatalog?.catalogName ?: stringResource(R.string.discover_select_catalog)
-    val selectedGenreValue = uiState.selectedDiscoverGenre?.let { localizedGenreLabel(it) }
-        ?: stringResource(R.string.discover_genre_default)
-    val selectedGenreLabel = uiState.selectedDiscoverGenre?.let { localizedGenreLabel(it) }
-        ?: stringResource(R.string.discover_genres)
+    val selectedGenreLabel = uiState.selectedDiscoverGenre?.let { localizedGenreLabel(it) } ?: stringResource(R.string.discover_genre_default)
 
     Column(
         modifier = modifier
@@ -178,220 +133,90 @@ internal fun DiscoverSection(
             .padding(horizontal = NuvioTheme.spacing.xxxl),
         verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
     ) {
-        AnimatedVisibility(
-            visible = !cinemaBrowse || !gridHasFocus,
-            enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = tween(180)),
-            exit = fadeOut(animationSpec = tween(140)) + shrinkVertically(animationSpec = tween(140))
+        Text(
+            text = stringResource(R.string.discover_title),
+            style = MaterialTheme.typography.headlineMedium,
+            color = if (showBuiltInHeader) NuvioTheme.colors.TextPrimary else Color.Transparent
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
         ) {
-            if (cinemaBrowse) {
-                // Cinema keeps its browse chrome to one compact row. Keep the title and
-                // selectors together at the leading edge so DPAD Down from the top tabs
-                // lands on a nearby filter instead of jumping into the poster grid.
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val rowGap = 12.dp
-                    val catalogMinWidth = 132.dp
-                    val genreMinWidth = 116.dp
-                    val filterMinWidth = catalogMinWidth + genreMinWidth +
-                        if (showTypeFilter) 120.dp else 0.dp
-                    // Reserve the arrangement gap before the weighted trailing spacer too;
-                    // this keeps localized titles and long catalog names inside the row.
-                    val rowGapCount = if (showTypeFilter) 4 else 3
-                    val titleMaxWidth = (maxWidth - (rowGap * rowGapCount) - filterMinWidth)
-                        .coerceAtLeast(0.dp)
-                        .coerceAtMost(220.dp)
-                    val availableFilterWidth = (maxWidth - titleMaxWidth - (rowGap * rowGapCount))
-                        .coerceAtLeast(filterMinWidth)
-                    val catalogMaxWidth = if (showTypeFilter) {
-                        300.dp
-                    } else {
-                        (availableFilterWidth - genreMinWidth)
-                            .coerceAtLeast(catalogMinWidth)
-                            .coerceAtMost(300.dp)
-                    }
-                    val genreMaxWidth = if (showTypeFilter) {
-                        260.dp
-                    } else {
-                        (availableFilterWidth - catalogMaxWidth)
-                            .coerceAtLeast(genreMinWidth)
-                            .coerceAtMost(260.dp)
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(rowGap),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = headerTitle ?: stringResource(R.string.discover_title),
-                            modifier = Modifier.widthIn(max = titleMaxWidth),
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = if (showBuiltInHeader) NuvioTheme.colors.TextPrimary else Color.Transparent,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+            DiscoverDropdownPicker(
+                modifier = Modifier.weight(1f)
+                    .focusRequester(filterFocusRequester),
+                title = stringResource(R.string.discover_filter_type),
+                value = selectedTypeLabel,
+                selectedValue = uiState.selectedDiscoverType,
+                expanded = expandedPicker == "type",
+                options = availableTypes.map { type ->
+                    val label = localizedTypeLabel(type)
+                    DiscoverOption(label, type)
+                },
+                onExpandedChange = { shouldExpand ->
+                    expandedPicker = if (shouldExpand) "type" else null
+                },
+                onSelect = { option ->
+                    onSelectType(option.value)
+                    expandedPicker = null
+                },
+                blockFocus = blockFilterFocus
+            )
 
-                        if (showTypeFilter) {
-                            DiscoverDropdownPicker(
-                                modifier = Modifier
-                                    .widthIn(min = 120.dp, max = 240.dp)
-                                    .focusRequester(filterFocusRequester),
-                                title = stringResource(R.string.discover_filter_type),
-                                value = selectedTypeLabel,
-                                selectedValue = uiState.selectedDiscoverType,
-                                expanded = expandedPicker == "type",
-                                options = availableTypes.map { type ->
-                                    DiscoverOption(localizedTypeLabel(type), type)
-                                },
-                                onExpandedChange = { shouldExpand ->
-                                    expandedPicker = if (shouldExpand) "type" else null
-                                },
-                                onSelect = { option ->
-                                    onSelectType(option.value)
-                                    expandedPicker = null
-                                },
-                                blockFocus = blockFilterFocus,
-                                compact = true
-                            )
-                        }
+            DiscoverDropdownPicker(
+                modifier = Modifier.weight(1f),
+                title = stringResource(R.string.discover_filter_catalog),
+                value = selectedCatalogLabel,
+                selectedValue = uiState.selectedDiscoverCatalogKey,
+                expanded = expandedPicker == "catalog",
+                options = filteredCatalogs.map { DiscoverOption(it.catalogName, it.key) },
+                onExpandedChange = { shouldExpand ->
+                    expandedPicker = if (shouldExpand) "catalog" else null
+                },
+                onSelect = { option ->
+                    onSelectCatalog(option.value)
+                    expandedPicker = null
+                },
+                blockFocus = blockFilterFocus
+            )
 
-                        DiscoverDropdownPicker(
-                            modifier = Modifier
-                                .widthIn(min = catalogMinWidth, max = catalogMaxWidth)
-                                .then(if (!showTypeFilter) Modifier.focusRequester(filterFocusRequester) else Modifier),
-                            title = stringResource(R.string.discover_filter_catalog),
-                            value = selectedCatalogLabel,
-                            selectedValue = uiState.selectedDiscoverCatalogKey,
-                            expanded = expandedPicker == "catalog",
-                            options = filteredCatalogs.map { DiscoverOption(it.catalogName, it.key) },
-                            onExpandedChange = { shouldExpand ->
-                                expandedPicker = if (shouldExpand) "catalog" else null
-                            },
-                            onSelect = { option ->
-                                onSelectCatalog(option.value)
-                                expandedPicker = null
-                            },
-                            blockFocus = blockFilterFocus,
-                            compact = true
-                        )
+            DiscoverDropdownPicker(
+                modifier = Modifier.weight(1f),
+                title = stringResource(R.string.discover_filter_genre),
+                value = selectedGenreLabel,
+                selectedValue = uiState.selectedDiscoverGenre ?: "__default__",
+                expanded = expandedPicker == "genre",
+                options = buildList {
+                    add(DiscoverOption(stringResource(R.string.discover_genre_default), "__default__"))
+                    addAll(genres.map { DiscoverOption(localizedGenreLabel(it), it) })
+                },
+                onExpandedChange = { shouldExpand ->
+                    expandedPicker = if (shouldExpand) "genre" else null
+                },
+                onSelect = { option ->
+                    onSelectGenre(option.value.takeUnless { it == "__default__" })
+                    expandedPicker = null
+                },
+                blockFocus = blockFilterFocus
+            )
+        }
 
-                        DiscoverDropdownPicker(
-                            modifier = Modifier.widthIn(min = genreMinWidth, max = genreMaxWidth),
-                            title = stringResource(R.string.discover_filter_genre),
-                            value = selectedGenreValue,
-                            displayValue = selectedGenreLabel,
-                            selectedValue = uiState.selectedDiscoverGenre ?: "__default__",
-                            expanded = expandedPicker == "genre",
-                            options = buildList {
-                                add(DiscoverOption(stringResource(R.string.discover_genre_default), "__default__"))
-                                addAll(genres.map { DiscoverOption(localizedGenreLabel(it), it) })
-                            },
-                            onExpandedChange = { shouldExpand ->
-                                expandedPicker = if (shouldExpand) "genre" else null
-                            },
-                            onSelect = { option ->
-                                onSelectGenre(option.value.takeUnless { it == "__default__" })
-                                expandedPicker = null
-                            },
-                            blockFocus = blockFilterFocus,
-                            compact = true
-                        )
-
-                        // Keep any remaining width after the controls, rather than between
-                        // the title and controls, so the filters remain spatially adjacent.
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
+        selectedCatalog?.let { catalog ->
+            val metadataSegments = buildList {
+                add(catalog.addonName)
+                if (uiState.catalogTypeSuffixEnabled) {
+                    localizedTypeLabel(catalog.type)
+                        .takeIf { it.isNotEmpty() }
+                        ?.let(::add)
                 }
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
-                    Text(
-                        text = headerTitle ?: stringResource(R.string.discover_title),
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = if (showBuiltInHeader) NuvioTheme.colors.TextPrimary else Color.Transparent
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
-                    ) {
-                        if (showTypeFilter) {
-                            DiscoverDropdownPicker(
-                                modifier = Modifier.weight(1f)
-                                    .focusRequester(filterFocusRequester),
-                                title = stringResource(R.string.discover_filter_type),
-                                value = selectedTypeLabel,
-                                selectedValue = uiState.selectedDiscoverType,
-                                expanded = expandedPicker == "type",
-                                options = availableTypes.map { type ->
-                                    DiscoverOption(localizedTypeLabel(type), type)
-                                },
-                                onExpandedChange = { shouldExpand ->
-                                    expandedPicker = if (shouldExpand) "type" else null
-                                },
-                                onSelect = { option ->
-                                    onSelectType(option.value)
-                                    expandedPicker = null
-                                },
-                                blockFocus = blockFilterFocus
-                            )
-                        }
-
-                        DiscoverDropdownPicker(
-                            modifier = Modifier
-                                .weight(1f)
-                                .then(if (!showTypeFilter) Modifier.focusRequester(filterFocusRequester) else Modifier),
-                            title = stringResource(R.string.discover_filter_catalog),
-                            value = selectedCatalogLabel,
-                            selectedValue = uiState.selectedDiscoverCatalogKey,
-                            expanded = expandedPicker == "catalog",
-                            options = filteredCatalogs.map { DiscoverOption(it.catalogName, it.key) },
-                            onExpandedChange = { shouldExpand ->
-                                expandedPicker = if (shouldExpand) "catalog" else null
-                            },
-                            onSelect = { option ->
-                                onSelectCatalog(option.value)
-                                expandedPicker = null
-                            },
-                            blockFocus = blockFilterFocus
-                        )
-
-                        DiscoverDropdownPicker(
-                            modifier = Modifier.weight(1f),
-                            title = stringResource(R.string.discover_filter_genre),
-                            value = selectedGenreValue,
-                            selectedValue = uiState.selectedDiscoverGenre ?: "__default__",
-                            expanded = expandedPicker == "genre",
-                            options = buildList {
-                                add(DiscoverOption(stringResource(R.string.discover_genre_default), "__default__"))
-                                addAll(genres.map { DiscoverOption(localizedGenreLabel(it), it) })
-                            },
-                            onExpandedChange = { shouldExpand ->
-                                expandedPicker = if (shouldExpand) "genre" else null
-                            },
-                            onSelect = { option ->
-                                onSelectGenre(option.value.takeUnless { it == "__default__" })
-                                expandedPicker = null
-                            },
-                            blockFocus = blockFilterFocus
-                        )
-                    }
-
-                    selectedCatalog?.let { catalog ->
-                        val metadataSegments = buildList {
-                            add(catalog.addonName)
-                            if (uiState.catalogTypeSuffixEnabled) {
-                                localizedTypeLabel(catalog.type)
-                                    .takeIf { it.isNotEmpty() }
-                                    ?.let(::add)
-                            }
-                            uiState.selectedDiscoverGenre?.let { add(localizedGenreLabel(it)) }
-                        }
-                        Text(
-                            text = metadataSegments.joinToString(" • "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = NuvioTheme.colors.TextSecondary
-                        )
-                    }
-                }
+                uiState.selectedDiscoverGenre?.let { add(localizedGenreLabel(it)) }
             }
+            Text(
+                text = metadataSegments.joinToString(" • "),
+                style = MaterialTheme.typography.bodySmall,
+                color = NuvioTheme.colors.TextSecondary
+            )
         }
 
         when {
@@ -434,11 +259,7 @@ internal fun DiscoverSection(
                     onItemLongPress = { item ->
                         onItemLongPress(item, selectedCatalog?.addonBaseUrl ?: "")
                     },
-                    filterKey = "${uiState.selectedDiscoverType}|${uiState.selectedDiscoverCatalogKey}|${uiState.selectedDiscoverGenre}",
-                    restoreFiltersOnTopUp = cinemaBrowse,
-                    onRequestFilters = {
-                        requestFilters()
-                    }
+                    filterKey = "${uiState.selectedDiscoverType}|${uiState.selectedDiscoverCatalogKey}|${uiState.selectedDiscoverGenre}"
                 )
                 }
             }
@@ -468,14 +289,12 @@ private fun DiscoverDropdownPicker(
     modifier: Modifier = Modifier,
     title: String,
     value: String,
-    displayValue: String = value,
     selectedValue: String?,
     expanded: Boolean,
     options: List<DiscoverOption>,
     onExpandedChange: (Boolean) -> Unit,
     onSelect: (DiscoverOption) -> Unit,
-    blockFocus: Boolean = false,
-    compact: Boolean = false
+    blockFocus: Boolean = false
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var anchorSize by remember { mutableStateOf(IntSize.Zero) }
@@ -508,46 +327,32 @@ private fun DiscoverDropdownPicker(
         }
     }
 
-    val pickerShape = RoundedCornerShape(if (compact) 24.dp else 14.dp)
-    val focusedBorderColor = if (compact) Color.White.copy(alpha = 0.9f) else NuvioTheme.colors.FocusRing
-
     Box(modifier = modifier) {
         Card(
             onClick = { onExpandedChange(!expanded) },
             modifier = Modifier
-                .then(
-                    if (compact) {
-                        Modifier.height(44.dp)
-                    } else {
-                        Modifier.fillMaxWidth()
-                    }
-                )
+                .fillMaxWidth()
                 .onSizeChanged { anchorSize = it }
                 .onFocusChanged { state ->
                     isFocused = state.isFocused
-                }
-                .semantics {
-                    contentDescription = "$title: $value"
                 }
                 .then(
                     if (blockFocus) Modifier.focusProperties { canFocus = false }
                     else Modifier
                 ),
-            shape = CardDefaults.shape(shape = pickerShape),
+            shape = CardDefaults.shape(shape = RoundedCornerShape(14.dp)),
             colors = CardDefaults.colors(
-                containerColor = if (compact) NuvioTheme.colors.BackgroundCard.copy(alpha = 0.92f) else NuvioTheme.colors.BackgroundCard,
-                focusedContainerColor = if (compact) Color.White.copy(alpha = 0.16f) else NuvioTheme.colors.FocusBackground
+                containerColor = NuvioTheme.colors.BackgroundCard,
+                focusedContainerColor = NuvioTheme.colors.FocusBackground
             ),
             border = CardDefaults.border(
                 border = Border(
                     border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
-                    shape = pickerShape
+                    shape = RoundedCornerShape(14.dp)
                 ),
-                // Cinema uses an explicit neutral pill outline rather than the TV default
-                // focus treatment (which can be square or theme-colored on some devices).
                 focusedBorder = Border(
-                    border = BorderStroke(if (compact) 1.dp else NuvioTheme.spacing.xxs, focusedBorderColor),
-                    shape = pickerShape
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                    shape = RoundedCornerShape(14.dp)
                 )
             ),
             scale = CardDefaults.scale(
@@ -555,19 +360,25 @@ private fun DiscoverDropdownPicker(
                 pressedScale = 1.0f
             )
         ) {
-            if (compact) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xxs)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NuvioTheme.colors.TextTertiary
+                )
                 Row(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .padding(horizontal = 15.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Keep the visible pill compact; the full "$title: $value" label
-                    // remains available through the semantics content description above.
                     Text(
-                        text = displayValue,
-                        style = MaterialTheme.typography.titleSmall,
+                        text = value,
+                        style = MaterialTheme.typography.titleMedium,
                         color = NuvioTheme.colors.TextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -575,41 +386,9 @@ private fun DiscoverDropdownPicker(
                     Icon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                         contentDescription = if (expanded) stringResource(R.string.cd_collapse, title) else stringResource(R.string.cd_expand, title),
-                        modifier = Modifier.size(18.dp),
-                        tint = if (isFocused) Color.White else NuvioTheme.colors.TextSecondary
+                        modifier = Modifier.size(20.dp),
+                        tint = if (isFocused) NuvioTheme.colors.FocusRing else NuvioTheme.colors.TextSecondary
                     )
-                }
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xxs)
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NuvioTheme.colors.TextTertiary
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = value,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = NuvioTheme.colors.TextPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Icon(
-                            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = if (expanded) stringResource(R.string.cd_collapse, title) else stringResource(R.string.cd_expand, title),
-                            modifier = Modifier.size(20.dp),
-                            tint = if (isFocused) NuvioTheme.colors.FocusRing else NuvioTheme.colors.TextSecondary
-                        )
-                    }
                 }
             }
         }
@@ -710,9 +489,7 @@ internal fun DiscoverGrid(
     onLoadMore: () -> Unit,
     onItemClick: (Int, MetaPreview) -> Unit,
     onItemLongPress: (MetaPreview) -> Unit = {},
-    filterKey: String = "",
-    restoreFiltersOnTopUp: Boolean = false,
-    onRequestFilters: () -> Unit = {}
+    filterKey: String = ""
 ) {
     val restoreFocusRequester = remember { FocusRequester() }
     val gridState = rememberLazyGridState()
@@ -815,28 +592,7 @@ internal fun DiscoverGrid(
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Adaptive(minSize = adaptiveStyle.width),
-        modifier = Modifier
-            .fillMaxSize()
-            .onPreviewKeyEvent { event ->
-                val native = event.nativeKeyEvent
-                if (!restoreFiltersOnTopUp ||
-                    native.action != AndroidKeyEvent.ACTION_DOWN ||
-                    native.keyCode != AndroidKeyEvent.KEYCODE_DPAD_UP
-                ) {
-                    false
-                } else {
-                    val visibleItems = gridState.layoutInfo.visibleItemsInfo
-                        .filter { it.index < items.size }
-                    val focusedItem = visibleItems.firstOrNull { it.index == focusedItemIndex }
-                    val firstRowOffset = visibleItems.minOfOrNull { it.offset.y }
-                    val atTopRow = gridState.firstVisibleItemIndex == 0 &&
-                        focusedItem != null && focusedItem.offset.y == firstRowOffset
-                    if (atTopRow) {
-                        onRequestFilters()
-                    }
-                    atTopRow
-                }
-            }
+        modifier = Modifier.fillMaxSize()
             .focusRestorer { focusedItemRequester }
             .dpadVerticalFastScroll(
                 scrollableState = gridState,

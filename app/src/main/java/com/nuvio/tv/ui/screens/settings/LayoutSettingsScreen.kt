@@ -82,7 +82,6 @@ import com.nuvio.tv.domain.model.DiscoverLocation
 import com.nuvio.tv.domain.model.EpisodeOptionsOverlayStyle
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
 import com.nuvio.tv.domain.model.HomeLayout
-import com.nuvio.tv.domain.model.isModernFamily
 import com.nuvio.tv.domain.model.HomeImdbRatingsVisibility
 import com.nuvio.tv.ui.components.CardCwStylePreview
 import com.nuvio.tv.ui.components.ClassicLayoutPreview
@@ -245,17 +244,6 @@ fun LayoutSettingsContent(
                             modifier = Modifier
                                 .weight(1f)
                                 .focusRequester(firstHomeLayoutFocusRequester)
-                        )
-                        LayoutCard(
-                            layout = HomeLayout.CINEMA,
-                            isSelected = uiState.selectedLayout == HomeLayout.CINEMA,
-                            onClick = {
-                                viewModel.onEvent(LayoutSettingsEvent.SelectLayout(HomeLayout.CINEMA))
-                            },
-                            onFocused = {
-                                focusedSection = LayoutSettingsSection.HOME_LAYOUT
-                            },
-                            modifier = Modifier.weight(1f)
                         )
                         LayoutCard(
                             layout = HomeLayout.GRID,
@@ -828,7 +816,7 @@ fun LayoutSettingsContent(
                     focusRequester = focusedPosterHeaderFocus,
                     onFocused = { focusedSection = LayoutSettingsSection.FOCUSED_POSTER }
                 ) {
-                    val isModern = uiState.selectedLayout.isModernFamily
+                    val isModern = uiState.selectedLayout == HomeLayout.MODERN
                     val isModernLandscape = isModern && uiState.modernLandscapePostersEnabled
                     val showAutoplayRow = AppFeaturePolicy.inAppTrailerPlaybackEnabled &&
                         (uiState.focusedPosterBackdropExpandEnabled || isModernLandscape)
@@ -1571,7 +1559,7 @@ private fun LayoutCard(
                         modifier = Modifier.fillMaxWidth(),
                         animated = animatePreview
                     )
-                    HomeLayout.MODERN, HomeLayout.CINEMA -> ModernLayoutPreview(
+                    HomeLayout.MODERN -> ModernLayoutPreview(
                         modifier = Modifier.fillMaxWidth(),
                         animated = animatePreview
                     )
@@ -1599,7 +1587,6 @@ private fun LayoutCard(
                         HomeLayout.CLASSIC -> stringResource(R.string.layout_classic)
                         HomeLayout.GRID -> stringResource(R.string.layout_grid)
                         HomeLayout.MODERN -> stringResource(R.string.layout_modern)
-                        HomeLayout.CINEMA -> stringResource(R.string.layout_cinema)
                     },
                     style = MaterialTheme.typography.labelLarge,
                     color = if (isSelected || isFocused) NuvioTheme.colors.TextPrimary else NuvioTheme.colors.TextSecondary

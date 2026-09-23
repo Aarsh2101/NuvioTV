@@ -1,13 +1,11 @@
 package com.nuvio.tv.ui.navigation
 
 import com.nuvio.tv.ui.theme.NuvioMotion
-import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.components.PlaybackAvailabilityProvider
 import com.nuvio.tv.ui.components.LocalPlaybackAvailability
 import com.nuvio.tv.ui.components.canStream
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import com.nuvio.tv.R
 
 import androidx.compose.animation.core.tween
@@ -38,7 +36,6 @@ import com.nuvio.tv.ui.screens.player.PlayerExitReason
 import com.nuvio.tv.ui.screens.player.PlayerScreen
 import com.nuvio.tv.ui.screens.player.PostPlayRecommendation
 import com.nuvio.tv.ui.screens.plugin.PluginScreen
-import com.nuvio.tv.ui.screens.search.CinemaBrowseScreen
 import com.nuvio.tv.ui.screens.search.DiscoverScreen
 import com.nuvio.tv.ui.screens.search.SearchScreen
 import com.nuvio.tv.ui.screens.settings.AboutScreen
@@ -63,11 +60,10 @@ import com.nuvio.tv.ui.screens.home.HeroBackdropState
 fun NuvioNavHost(
     navController: NavHostController,
     startDestination: String = Screen.Home.route,
-    hideBuiltInHeaders: Boolean = false,
-    cinemaMode: Boolean = false
+    hideBuiltInHeaders: Boolean = false
 ) {
     PlaybackAvailabilityProvider {
-        PlaybackNavHost(navController, startDestination, hideBuiltInHeaders, cinemaMode)
+        PlaybackNavHost(navController, startDestination, hideBuiltInHeaders)
     }
 }
 
@@ -75,8 +71,7 @@ fun NuvioNavHost(
 private fun PlaybackNavHost(
     navController: NavHostController,
     startDestination: String,
-    hideBuiltInHeaders: Boolean,
-    cinemaMode: Boolean
+    hideBuiltInHeaders: Boolean
 ) {
     val playbackAvailability = LocalPlaybackAvailability.current
     val context = LocalContext.current
@@ -218,7 +213,6 @@ private fun PlaybackNavHost(
             }
 
             HomeScreen(
-                cinemaMode = cinemaMode,
                 onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
                     val heroBackdrop = HeroBackdropState.consumeAndClear()
                     navController.navigate(
@@ -1150,39 +1144,9 @@ private fun PlaybackNavHost(
             )
         }
 
-        composable(Screen.CinemaMovies.route) {
-            CinemaBrowseScreen(
-                contentType = "movie",
-                cinemaMode = cinemaMode,
-                onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
-                    val heroBackdrop = HeroBackdropState.consumeAndClear()
-                    navController.navigate(
-                        Screen.Detail.createRoute(itemId, itemType, addonBaseUrl, heroBackdropUrl = heroBackdrop)
-                    )
-                }
-            )
-        }
-
-        composable(Screen.CinemaShows.route) {
-            CinemaBrowseScreen(
-                contentType = "series",
-                cinemaMode = cinemaMode,
-                onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
-                    val heroBackdrop = HeroBackdropState.consumeAndClear()
-                    navController.navigate(
-                        Screen.Detail.createRoute(itemId, itemType, addonBaseUrl, heroBackdropUrl = heroBackdrop)
-                    )
-                }
-            )
-        }
-
         composable(Screen.Discover.route) {
             DiscoverScreen(
-                // Cinema owns the persistent shell; the regular Discover header remains
-                // unchanged for non-Cinema layouts.
                 showBuiltInHeader = !hideBuiltInHeaders,
-                cinemaBrowse = cinemaMode,
-                contentTopPadding = if (cinemaMode) 0.dp else NuvioTheme.spacing.lg,
                 onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
                     val heroBackdrop = HeroBackdropState.consumeAndClear()
                     navController.navigate(

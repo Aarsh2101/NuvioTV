@@ -9,7 +9,6 @@ package com.nuvio.tv.ui.screens.home
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 import androidx.activity.compose.BackHandler
-import com.nuvio.tv.ui.navigation.Screen
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -99,17 +98,6 @@ import kotlin.math.roundToInt
 // Height of the wide card as a fraction of its width, matching the 2.5:1 shape of the mobile card.
 private const val WIDE_CARD_HEIGHT_RATIO = 0.4f
 
-private fun cinemaTypeMatches(actualType: String?, expectedType: String): Boolean {
-    if (actualType.isNullOrBlank()) return false
-    return if (expectedType.equals("movie", ignoreCase = true)) {
-        actualType.equals("movie", ignoreCase = true)
-    } else {
-        actualType.equals("series", ignoreCase = true) ||
-            actualType.equals("tv", ignoreCase = true) ||
-            actualType.equals("anime", ignoreCase = true)
-    }
-}
-
 private class ItemIdentitySnapshot(
     var byRow: Map<String, StableList<String>> = emptyMap()
 )
@@ -127,8 +115,6 @@ internal fun findRelocatedItemIndex(
 @Composable
 fun ModernHomeContent(
     uiState: HomeUiState,
-    cinemaMode: Boolean = false,
-    cinemaContentType: String? = null,
     modernPresentation: ModernHomePresentationState = ModernHomePresentationState(),
     focusState: HomeScreenFocusState,
     enrichingItemId: String? = null,
@@ -162,15 +148,10 @@ fun ModernHomeContent(
     val sidebarExpanded = LocalSidebarExpanded.current
     val isSidebarExpanded = remember(sidebarExpanded) { derivedStateOf { sidebarExpanded } }
     val lifecycleOwner = LocalLifecycleOwner.current
-    // Cinema mode is an opt-in visual preset: cinematic landscape rails and a
-    // full-bleed Apple-TV-style hero, while keeping trailers disabled by default
-    // so the redesign does not spend playback resources during browsing.
-    val cinemaPresentation = cinemaMode || cinemaContentType != null
-    val useLandscapePosters = cinemaPresentation || uiState.modernLandscapePostersEnabled
-    val fullScreenBackdrop = cinemaPresentation || uiState.modernHeroFullScreenBackdropEnabled
+    val useLandscapePosters = uiState.modernLandscapePostersEnabled
+    val fullScreenBackdrop = uiState.modernHeroFullScreenBackdropEnabled
     val trailerPlaybackTarget = uiState.focusedPosterBackdropTrailerPlaybackTarget
     val effectiveAutoplayEnabled =
-        !cinemaPresentation &&
         uiState.focusedPosterBackdropTrailerEnabled &&
             (useLandscapePosters || uiState.focusedPosterBackdropExpandEnabled)
     val landscapeExpandedCardMode =
@@ -178,46 +159,14 @@ fun ModernHomeContent(
             effectiveAutoplayEnabled &&
             trailerPlaybackTarget == FocusedPosterTrailerPlaybackTarget.EXPANDED_CARD
     val effectiveExpandEnabled =
-        cinemaPresentation ||
-            (uiState.focusedPosterBackdropExpandEnabled && !useLandscapePosters) ||
+        (uiState.focusedPosterBackdropExpandEnabled && !useLandscapePosters) ||
             landscapeExpandedCardMode
     val shouldActivateFocusedPosterFlow =
         effectiveExpandEnabled ||
             (effectiveAutoplayEnabled &&
                 trailerPlaybackTarget == FocusedPosterTrailerPlaybackTarget.HERO_MEDIA)
     val presentation = modernPresentation
-    val filteredPresentation = remember(presentation, cinemaContentType) {
-        if (cinemaContentType == null) {
-            presentation
-        } else {
-            val rows = presentation.rows.list.mapNotNull { row ->
-                // Cinema category roots contain catalog rails only. Continue Watching is kept
-                // when its item matches the locked category; collection folders are omitted.
-                val filteredItems = row.items.list.filter { item ->
-                    when (val payload = item.payload) {
-                        is ModernPayload.Catalog -> cinemaTypeMatches(
-                            item.metaPreview?.apiType ?: payload.itemType,
-                            cinemaContentType
-                        )
-                        is ModernPayload.ContinueWatching -> cinemaTypeMatches(
-                            when (val watching = payload.item) {
-                                is ContinueWatchingItem.InProgress -> watching.progress.contentType
-                                is ContinueWatchingItem.NextUp -> watching.info.contentType
-                            },
-                            cinemaContentType
-                        )
-                        is ModernPayload.CollectionFolder -> false
-                    }
-                }
-                row.takeIf { filteredItems.isNotEmpty() }?.copy(items = filteredItems.asStable())
-            }
-            ModernHomePresentationState(
-                rows = rows.asStable(),
-                lookups = buildCarouselRowLookups(rows)
-            )
-        }
-    }
-    val carouselRows = filteredPresentation.rows
+    val carouselRows = presentation.rows
 
     val hasCollections = remember(uiState.homeRows) {
         uiState.homeRows.any { it is HomeRow.CollectionRow }
@@ -231,15 +180,10 @@ fun ModernHomeContent(
     }
 
     if (carouselRows.list.isEmpty()) {
-        val heroItems = if (cinemaContentType == null) {
-            uiState.heroItems
-        } else {
-            uiState.heroItems.filter { cinemaTypeMatches(it.apiType, cinemaContentType) }
-        }
-        if (uiState.heroSectionEnabled && heroItems.isNotEmpty()) {
+        if (uiState.heroSectionEnabled && uiState.heroItems.isNotEmpty()) {
             Box(modifier = Modifier.fillMaxSize()) {
                 com.nuvio.tv.ui.components.HeroCarousel(
-                    items = heroItems.asStable(),
+                    items = uiState.heroItems.asStable(),
                     showImdbRatings = uiState.homeImdbRatingsVisibility.showRatings,
                     onItemClick = { item ->
                         onNavigateToDetail(item.id, item.apiType, "")
@@ -251,7 +195,7 @@ fun ModernHomeContent(
         return
     }
 
-    val carouselLookups = filteredPresentation.lookups
+    val carouselLookups = presentation.lookups
     val rowIndexByKey = carouselLookups.rowIndexByKey
     val rowByKey = carouselLookups.rowByKey
     val rowKeyByGlobalRowIndex = carouselLookups.rowKeyByGlobalRowIndex
@@ -388,11 +332,7 @@ fun ModernHomeContent(
         if (verticalRowListState.isScrollInProgress) return@LaunchedEffect
         val selection = focusedCatalogSelection.value ?: return@LaunchedEffect
         if (selection.payload !is ModernPayload.Catalog) return@LaunchedEffect
-        val expansionDelayMs = if (cinemaPresentation) {
-            520L
-        } else {
-            (uiState.focusedPosterBackdropExpandDelaySeconds.coerceAtLeast(0) * 1000L).coerceAtLeast(150L)
-        }
+        val expansionDelayMs = (uiState.focusedPosterBackdropExpandDelaySeconds.coerceAtLeast(0) * 1000L).coerceAtLeast(150L)
         delay(expansionDelayMs)
         if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return@LaunchedEffect
         if (shouldActivateFocusedPosterFlow &&
@@ -712,12 +652,7 @@ fun ModernHomeContent(
     val screenWidth = localConfiguration.screenWidthDp.dp
     val screenHeight = localConfiguration.screenHeightDp.dp
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(top = 0.dp)
-            .background(NuvioTheme.colors.Background)
-    ) {
+    Box(modifier = Modifier.fillMaxSize().background(NuvioTheme.colors.Background)) {
             val posterCardCornerRadius = remember(uiState.posterCardCornerRadiusDp) { uiState.posterCardCornerRadiusDp.dp }
             val rowHorizontalPadding = 52.dp
 
@@ -1029,11 +964,7 @@ fun ModernHomeContent(
             }
 
             val localDensity = LocalDensity.current
-            val rowsViewportHeightFraction = when {
-                cinemaPresentation -> 0.46f
-                useLandscapePosters -> 0.49f
-                else -> 0.52f
-            }
+            val rowsViewportHeightFraction = if (useLandscapePosters) 0.49f else 0.52f
             val rowsViewportHeight = remember(screenHeight, rowsViewportHeightFraction) { screenHeight * rowsViewportHeightFraction }
             val rowTitleLineHeight = MaterialTheme.typography.titleMedium.lineHeight
             val rowTitleHeight = remember(rowTitleLineHeight, localDensity) {
@@ -1058,15 +989,6 @@ fun ModernHomeContent(
                 }
             }
             val contentFocusRequester = LocalContentFocusRequester.current
-            val cinemaFocusController = LocalCinemaFocusController.current
-            val cinemaTopNavFocusRequester = if (cinemaPresentation) {
-                val activeRoute = cinemaFocusController?.activeCinemaCategory
-                    ?: cinemaFocusController?.selectedRoute
-                    ?: Screen.Home.route
-                cinemaFocusController?.requester(activeRoute)
-            } else {
-                null
-            }
             val heroMediaWidthPx = remember(screenWidth, localDensity, fullScreenBackdrop) {
                 with(localDensity) {
                     if (fullScreenBackdrop) screenWidth.roundToPx()
@@ -1212,7 +1134,6 @@ fun ModernHomeContent(
                 isFastScrolling = isFastScrolling,
                 onFastScrollingChanged = onFastScrollingChangedLambda,
                 contentFocusRequester = contentFocusRequester,
-                cinemaTopNavFocusRequester = cinemaTopNavFocusRequester,
                 rowsViewportHeight = rowsViewportHeight,
                 catalogBottomPadding = NuvioTheme.spacing.none,
                 trailerContentAlpha = stableTrailerContentAlphaLambda,
@@ -1234,8 +1155,7 @@ fun ModernHomeContent(
                 trailerPreviewUrls = stableTrailerPreviewUrls,
                 trailerPreviewAudioUrls = stableTrailerPreviewAudioUrls,
                 useLandscapePosters = useLandscapePosters,
-                cinemaMode = cinemaPresentation,
-                showLabels = cinemaPresentation || uiState.posterLabelsEnabled,
+                showLabels = uiState.posterLabelsEnabled,
                 posterCardCornerRadius = posterCardCornerRadius,
                 focusedPosterBackdropTrailerMuted = uiState.focusedPosterBackdropTrailerMuted,
                 effectiveExpandEnabled = effectiveExpandEnabled,

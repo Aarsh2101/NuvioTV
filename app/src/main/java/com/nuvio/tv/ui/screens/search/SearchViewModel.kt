@@ -193,11 +193,11 @@ class SearchViewModel @Inject constructor(
         val cornerRadiusDp: Int
     )
 
-    fun ensureDiscoverLoaded(force: Boolean = false) {
+    fun ensureDiscoverLoaded() {
         val state = _uiState.value
-        if (!force && state.discoverLocation == DiscoverLocation.OFF) return
+        if (state.discoverLocation == DiscoverLocation.OFF) return
         if (state.discoverInitialized || state.discoverLoading) return
-        viewModelScope.launch { loadDiscoverCatalogs(force) }
+        viewModelScope.launch { loadDiscoverCatalogs() }
     }
 
     private val metaPrefetchedIds: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
@@ -867,8 +867,8 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadDiscoverCatalogs(force: Boolean = false) {
-        if (!force && _uiState.value.discoverLocation == DiscoverLocation.OFF) return
+    private suspend fun loadDiscoverCatalogs() {
+        if (_uiState.value.discoverLocation == DiscoverLocation.OFF) return
         _uiState.update { it.copy(discoverLoading = true) }
         val addons = try {
             addonRepository.getInstalledAddons().first().enabledAddons()

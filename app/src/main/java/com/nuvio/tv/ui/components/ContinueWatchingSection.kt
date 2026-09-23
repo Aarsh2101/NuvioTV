@@ -438,7 +438,6 @@ fun ContinueWatchingCard(
     cardStyle: ContinueWatchingCardStyle = ContinueWatchingCardStyle.CARD,
     isFocused: Boolean = false,
     cornerRadius: Dp = NuvioTheme.radii.md,
-    focusedScale: Float = 1.08f,
     posterTitleOverride: TextStyle? = null
 ) {
     val isPosterStyle = cardStyle == ContinueWatchingCardStyle.POSTER
@@ -661,7 +660,7 @@ fun ContinueWatchingCard(
                 )
             )
         },
-        scale = CardDefaults.scale(scale = 1f, focusedScale = focusedScale)
+        scale = CardDefaults.scale(focusedScale = 1f)
     ) {
         if (isWideStyle) {
             WideCardContent(
@@ -823,33 +822,37 @@ fun ContinueWatchingCard(
                 }
 
                 if (progress != null) {
-                    val barInset = if (isPosterStyle) NuvioTheme.spacing.sm else 0.dp
+                    // The poster card lifts its bar off the bottom edge and sits it on a pill, matching mobile.
+                    val barInset =
+                        if (isPosterStyle) NuvioTheme.spacing.sm else NuvioTheme.spacing.xs
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
+                            .padding(horizontal = 10.dp, vertical = barInset)
+                            .fillMaxWidth()
                             .then(
                                 if (isPosterStyle) {
                                     Modifier
-                                        .padding(horizontal = 10.dp, vertical = barInset)
-                                        .fillMaxWidth()
                                         .clip(RoundedCornerShape(999.dp))
                                         .background(NuvioTheme.colors.Background.copy(alpha = 0.7f))
                                         .padding(NuvioTheme.spacing.xxs)
                                 } else {
-                                    Modifier.fillMaxWidth()
+                                    Modifier
                                 }
                             )
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(3.5.dp)
-                                .background(Color.Black.copy(alpha = 0.45f))
+                                .clip(RoundedCornerShape(1.5.dp))
+                                .height(3.dp)
+                                .background(Color.Black.copy(alpha = 0.3f))
                         ) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth(progressFraction)
-                                    .height(3.5.dp)
+                                    .clip(RoundedCornerShape(1.5.dp))
+                                    .height(3.dp)
                                     .background(NetflixRed)
                             )
                         }

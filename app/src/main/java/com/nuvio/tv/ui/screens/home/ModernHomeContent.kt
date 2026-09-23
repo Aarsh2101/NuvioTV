@@ -166,7 +166,7 @@ fun ModernHomeContent(
     // full-bleed Apple-TV-style hero, while keeping trailers disabled by default
     // so the redesign does not spend playback resources during browsing.
     val cinemaPresentation = cinemaMode || cinemaContentType != null
-    val useLandscapePosters = if (cinemaPresentation) false else uiState.modernLandscapePostersEnabled
+    val useLandscapePosters = cinemaPresentation || uiState.modernLandscapePostersEnabled
     val fullScreenBackdrop = cinemaPresentation || uiState.modernHeroFullScreenBackdropEnabled
     val trailerPlaybackTarget = uiState.focusedPosterBackdropTrailerPlaybackTarget
     val effectiveAutoplayEnabled =
@@ -178,10 +178,9 @@ fun ModernHomeContent(
             effectiveAutoplayEnabled &&
             trailerPlaybackTarget == FocusedPosterTrailerPlaybackTarget.EXPANDED_CARD
     val effectiveExpandEnabled =
-        !cinemaPresentation && (
+        cinemaPresentation ||
             (uiState.focusedPosterBackdropExpandEnabled && !useLandscapePosters) ||
             landscapeExpandedCardMode
-        )
     val shouldActivateFocusedPosterFlow =
         effectiveExpandEnabled ||
             (effectiveAutoplayEnabled &&
@@ -725,8 +724,8 @@ fun ModernHomeContent(
             val activeCarouselItemState = remember(carouselRows, rowByKey) {
                 derivedStateOf {
                     val activeKey = activeRowKey.value
-                    val row = if (activeKey == null) carouselRows.list.firstOrNull()
-                    else rowByKey[activeKey] ?: carouselRows.list.firstOrNull()
+                    val row = if (activeKey == null) null
+                    else rowByKey[activeKey]
                     
                     val index = activeItemIndex.intValue
                     val clampedIdx = row?.let {
@@ -770,7 +769,7 @@ fun ModernHomeContent(
                     } else null
 
                     val resolvedHero = when {
-                        activeCarouselItem == null -> heroItem.value ?: carouselRows.list.firstOrNull()?.items?.list?.firstOrNull()?.heroPreview
+                        activeCarouselItem == null -> null
                         enrichmentActive -> activeCarouselItem.heroPreview
                         enrichedHero != null -> enrichedHero
                         else -> activeCarouselItem.heroPreview
@@ -921,7 +920,7 @@ fun ModernHomeContent(
                 derivedStateOf {
                     val (heroBackdrop, resolvedHero, enrichmentActive) = resolvedHeroState.value
                     val (heroMediaUrl, heroMediaAudioUrl, heroMediaPlaybackKey) = heroMediaDataState.value
-                    val preview = resolvedHero
+                    val preview = if (enrichmentActive) null else resolvedHero
                     ModernHeroSceneState(
                         heroBackdrop = heroBackdrop,
                         preview = preview,
@@ -1044,45 +1043,20 @@ fun ModernHomeContent(
                 }
             }
             val heroBackdropHeight = remember(screenHeight, rowsViewportHeight, rowTitleHeight) { (screenHeight - rowsViewportHeight + rowTitleHeight + 14.dp).coerceAtMost(screenHeight) }
-            val verticalRowBringIntoViewSpec = remember(localDensity, defaultBringIntoViewSpec, cinemaPresentation, carouselRows) {
-                val normalTopInsetPx = with(localDensity) { 180.dp.toPx() }
-                val firstRowTopInsetPx = with(localDensity) { 340.dp.toPx() }
+            val verticalRowBringIntoViewSpec = remember(localDensity, defaultBringIntoViewSpec) {
+                val topInsetPx = with(localDensity) { MODERN_ROW_HEADER_FOCUS_INSET.toPx() }
                 @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
                 object : BringIntoViewSpec {
                     override val scrollAnimationSpec: AnimationSpec<Float> = defaultBringIntoViewSpec.scrollAnimationSpec
                     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
-                        if (!cinemaPresentation) {
-                            val defaultInset = with(localDensity) { MODERN_ROW_HEADER_FOCUS_INSET.toPx() }
-                            return offset - defaultInset
-                        }
-                        val isFirstRow = activeRowKey.value == carouselRows.list.firstOrNull()?.key
-                        val targetInset = if (isFirstRow) firstRowTopInsetPx else normalTopInsetPx
-                        if (abs(offset - targetInset) < 1f) return 0f
-                        val distance = offset - targetInset
+                        val currentLeadingEdge = offset
+                        if (abs(currentLeadingEdge - topInsetPx) < 1f) return 0f
+                        val distance = currentLeadingEdge - topInsetPx
                         if (distance < 0f && !verticalRowListState.canScrollBackward) return 0f
                         return distance
                     }
                 }
             }
-            val isScrolledDownState = remember(verticalRowListState, carouselRows) {
-                derivedStateOf {
-                    val isFirstRow = activeRowKey.value == carouselRows.list.firstOrNull()?.key
-                    if (isFirstRow) false
-                    else verticalRowListState.firstVisibleItemIndex > 0 ||
-                        verticalRowListState.firstVisibleItemScrollOffset > 150
-                }
-            }
-            val isScrolledDown = isScrolledDownState.value
-            val billboardAlpha by animateFloatAsState(
-                targetValue = if (cinemaPresentation && isScrolledDown) 0f else 1f,
-                animationSpec = tween(durationMillis = 280),
-                label = "billboardAlpha"
-            )
-            val billboardTranslationY by animateFloatAsState(
-                targetValue = if (cinemaPresentation && isScrolledDown) -60f else 0f,
-                animationSpec = tween(durationMillis = 280),
-                label = "billboardTranslationY"
-            )
             val contentFocusRequester = LocalContentFocusRequester.current
             val cinemaFocusController = LocalCinemaFocusController.current
             val cinemaTopNavFocusRequester = if (cinemaPresentation) {
@@ -1151,24 +1125,17 @@ fun ModernHomeContent(
             val shouldPlayTrailerLambda = remember { { shouldPlayCatalogHeroTrailerUpdated || shouldPlayCollectionHeroVideoUpdated } }
             val heroTrailerRenderedLambda = remember { { heroTrailerFirstFrameRenderedUpdated } }
 
-            val heroMetadataModifier = remember(rowHorizontalPadding, rowsViewportHeight, cinemaPresentation) {
-                if (cinemaPresentation) {
-                    Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = rowHorizontalPadding, top = 64.dp, end = NuvioTheme.spacing.xxxl)
-                        .fillMaxWidth(MODERN_HERO_TEXT_WIDTH_FRACTION)
-                } else {
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = rowHorizontalPadding, end = NuvioTheme.spacing.xxxl, bottom = NuvioTheme.spacing.none + rowsViewportHeight + NuvioTheme.spacing.lg)
-                        .fillMaxWidth(MODERN_HERO_TEXT_WIDTH_FRACTION)
-                }
+            val heroMetadataModifier = remember(rowHorizontalPadding, rowsViewportHeight) {
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = rowHorizontalPadding, end = NuvioTheme.spacing.xxxl, bottom = NuvioTheme.spacing.none + rowsViewportHeight + NuvioTheme.spacing.lg)
+                    .fillMaxWidth(MODERN_HERO_TEXT_WIDTH_FRACTION)
             }
 
             HeroTitleBlock(
                 previewProvider = {
                     val state = heroSceneStateLambda()
-                    if (isRapidHorizontalNav.value) null
+                    if (isRapidHorizontalNav.value || state.enrichmentActive) null
                     else state.preview
                 },
                 enrichmentActive = {
@@ -1184,10 +1151,7 @@ fun ModernHomeContent(
                         state.fullScreenBackdrop && shouldPlayTrailerLambda() && heroTrailerRenderedLambda()
                     }
                 },
-                modifier = heroMetadataModifier.graphicsLayer {
-                    alpha = billboardAlpha
-                    translationY = billboardTranslationY
-                }
+                modifier = heroMetadataModifier
             )
 
             val latestOnFocusedRowKeyChanged by rememberUpdatedState(onFocusedRowKeyChanged)
@@ -1271,7 +1235,7 @@ fun ModernHomeContent(
                 trailerPreviewAudioUrls = stableTrailerPreviewAudioUrls,
                 useLandscapePosters = useLandscapePosters,
                 cinemaMode = cinemaPresentation,
-                showLabels = if (cinemaPresentation) false else uiState.posterLabelsEnabled,
+                showLabels = cinemaPresentation || uiState.posterLabelsEnabled,
                 posterCardCornerRadius = posterCardCornerRadius,
                 focusedPosterBackdropTrailerMuted = uiState.focusedPosterBackdropTrailerMuted,
                 effectiveExpandEnabled = effectiveExpandEnabled,
@@ -1308,7 +1272,8 @@ fun ModernHomeContent(
                 onExpansionInteractionNonceChange = onExpansionInteractionNonceChangeLambda,
                 blockLeftOnFirstExpandedItem = blockLeftOnFirstExpandedItem,
                 isVerticalRowsScrollingState = isVerticalRowsScrollingState,
-                modifier = (if (cinemaPresentation) Modifier.fillMaxSize() else Modifier.align(Alignment.BottomStart))
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
                     .onFocusChanged { contentHasFocus.value = it.hasFocus }
             )
     }

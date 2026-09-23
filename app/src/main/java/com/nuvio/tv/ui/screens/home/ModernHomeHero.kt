@@ -309,32 +309,28 @@ internal fun HeroTitleBlock(
     var stablePreview by remember { mutableStateOf<HeroPreview?>(null) }
 
     LaunchedEffect(Unit) {
-        snapshotFlow { previewProvider() }.collect { p ->
-            if (p != null && stablePreview != p) {
-                stablePreview = p
+        snapshotFlow { Pair(previewProvider(), enrichmentActive()) }.collect { (p, e) ->
+            if (!e && p != null) {
+                if (stablePreview != p) stablePreview = p
+            } else if (e) {
+                if (stablePreview != null) stablePreview = null
             }
         }
     }
 
-    val displayPreview = currentPreview ?: stablePreview
+    val displayPreview = if (!isEnriching && currentPreview != null) currentPreview else stablePreview
     if (displayPreview == null) return
     
     Box(
         modifier = modifier,
         contentAlignment = Alignment.BottomStart
     ) {
-        androidx.compose.animation.Crossfade(
-            targetState = displayPreview,
-            animationSpec = tween(durationMillis = 220),
-            label = "heroTitleContentCrossfade"
-        ) { targetPreview ->
-            HeroTitleContent(
-                previewProvider = { targetPreview },
-                portraitMode = portraitMode,
-                showImdbRatings = showImdbRatings,
-                trailerPlaying = trailerPlaying
-            )
-        }
+        HeroTitleContent(
+            previewProvider = { displayPreview },
+            portraitMode = portraitMode,
+            showImdbRatings = showImdbRatings,
+            trailerPlaying = trailerPlaying
+        )
     }
 }
 

@@ -318,12 +318,10 @@ internal fun ModernHomeRowsList(
                     }
                     val firstRowKey = carouselRows.list.firstOrNull()?.key
                     val lastRowKey = carouselRows.list.lastOrNull()?.key
-                    val isAtFirstRow = activeRowKey.value == firstRowKey ||
-                        (activeRowKey.value == null && verticalRowListState.firstVisibleItemIndex == 0)
                     if (event.type == KeyEventType.KeyDown &&
                         event.key == Key.DirectionUp &&
                         cinemaTopNavFocusRequester != null &&
-                        isAtFirstRow
+                        (activeRowKey.value == firstRowKey || verticalRowListState.firstVisibleItemIndex == 0)
                     ) {
                         runCatching { cinemaTopNavFocusRequester.requestFocus() }
                         return@onPreviewKeyEvent true
@@ -332,7 +330,7 @@ internal fun ModernHomeRowsList(
                         event.key == Key.DirectionUp &&
                         effectiveExpandEnabled &&
                         expandedCatalogFocusKey.value != null &&
-                        isAtFirstRow
+                        (activeRowKey.value == firstRowKey || verticalRowListState.firstVisibleItemIndex == 0)
                     ) return@onPreviewKeyEvent true
                     if (event.type == KeyEventType.KeyDown &&
                         event.key == Key.DirectionDown &&
@@ -398,7 +396,7 @@ internal fun ModernHomeRowsList(
                     },
                 ),
             contentPadding = if (cinemaMode) {
-                PaddingValues(top = 410.dp, bottom = 320.dp)
+                PaddingValues(top = 410.dp, bottom = 120.dp)
             } else {
                 PaddingValues(bottom = rowsViewportHeight)
             },

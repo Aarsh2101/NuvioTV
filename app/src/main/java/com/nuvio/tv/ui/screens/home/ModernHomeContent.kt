@@ -1115,8 +1115,7 @@ fun ModernHomeContent(
             }
             val heroBackdropHeight = remember(screenHeight, rowsViewportHeight, rowTitleHeight) { (screenHeight - rowsViewportHeight + rowTitleHeight + 14.dp).coerceAtMost(screenHeight) }
             val verticalRowBringIntoViewSpec = remember(localDensity, defaultBringIntoViewSpec, cinemaPresentation) {
-                val normalTopInsetPx = with(localDensity) { 108.dp.toPx() }
-                val tolerancePx = with(localDensity) { 20.dp.toPx() }
+                val normalTopInsetPx = with(localDensity) { 56.dp.toPx() }
                 @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
                 object : BringIntoViewSpec {
                     override val scrollAnimationSpec: AnimationSpec<Float> = defaultBringIntoViewSpec.scrollAnimationSpec
@@ -1125,8 +1124,7 @@ fun ModernHomeContent(
                             val defaultInset = with(localDensity) { MODERN_ROW_HEADER_FOCUS_INSET.toPx() }
                             return offset - defaultInset
                         }
-                        if (expandedCatalogFocusKey.value != null) return 0f
-                        if (abs(offset - normalTopInsetPx) <= tolerancePx) return 0f
+                        if (abs(offset - normalTopInsetPx) < 1f) return 0f
                         val distance = offset - normalTopInsetPx
                         if (distance < 0f && !verticalRowListState.canScrollBackward) return 0f
                         return distance

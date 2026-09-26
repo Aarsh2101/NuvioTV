@@ -456,7 +456,14 @@ internal fun PlayerRuntimeController.initializePlayer(
             // and shrink the budget at first frame (below).
             val libdoviConversionActive = effectiveDv7Mode == Dv7HandlingMode.DV81_LIBDOVI
             NuvioExoPlayerPerformanceHelper.updateSettings(playerSettings, context)
-            NuvioExoPlayerPerformanceHelper.enabled = playerSettings.nuvioPerformanceModeEnabled
+            // On this TV the native off-heap/zero-copy engine can silently stall DV MKV playback
+            // (no video or audio despite STATE_READY). Use heap allocation for Matroska while
+            // retaining the configured buffer, parallel range and VOD cache paths.
+            val matroskaSource = PlayerMediaSourceFactory.isMatroskaSource(
+                currentStreamMimeType, currentFilename, url
+            )
+            val nativePerformanceForStream = playerSettings.nuvioPerformanceModeEnabled && !matroskaSource
+            NuvioExoPlayerPerformanceHelper.enabled = nativePerformanceForStream
             val streamMime = currentStreamMimeType
             val isHls = streamMime != null && (
                 streamMime.equals(MimeTypes.APPLICATION_M3U8, ignoreCase = true) ||
@@ -496,7 +503,7 @@ internal fun PlayerRuntimeController.initializePlayer(
             }
             currentParallelChunkOverheadMb = parallelOverheadMb
 
-            val loadControl = if (playerSettings.nuvioPerformanceModeEnabled) {
+            val loadControl = if (nativePerformanceForStream) {
                 effectiveBackBufferDurationMs = NuvioExoPlayerPerformanceHelper.backBufferMs
                 currentBitrateAwareLoadControl = null
                 Log.i(
@@ -573,6 +580,12 @@ internal fun PlayerRuntimeController.initializePlayer(
                     .build()
             }
             _loadControl = loadControl
+            Log.i(
+                PlayerRuntimeController.TAG,
+                "PLAYBACK_ENGINE_PATH: matroska=$matroskaSource " +
+                    "nativePerformance=$nativePerformanceForStream " +
+                    "customLoadControl=${playerSettings.bufferEngineEnabled && !nativePerformanceForStream}"
+            )
 
             // The cache wraps whichever upstream data source it is given, so it does not depend on
             // either buffer engine. The low-RAM plus confirmed DV7 case is handled dynamically at
@@ -582,9 +595,9 @@ internal fun PlayerRuntimeController.initializePlayer(
             mediaSourceFactory.vodCacheEnabled = playerSettings.vodCacheEnabled
             mediaSourceFactory.vodCacheSizeMode = playerSettings.vodCacheSizeMode
             mediaSourceFactory.vodCacheSizeMb = playerSettings.vodCacheSizeMb
-            mediaSourceFactory.nativeEngineEnabled = playerSettings.nuvioPerformanceModeEnabled
+            mediaSourceFactory.nativeEngineEnabled = nativePerformanceForStream
 
-            mediaSourceFactory.nuvioPerformanceModeEnabled = playerSettings.nuvioPerformanceModeEnabled
+            mediaSourceFactory.nuvioPerformanceModeEnabled = nativePerformanceForStream
             if (playerSettings.parallelNetworkEnabled) {
                 mediaSourceFactory.useParallelConnections = playerSettings.useParallelConnections
                 mediaSourceFactory.parallelConnectionCount = playerSettings.parallelConnectionCount

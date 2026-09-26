@@ -200,6 +200,35 @@ class PlayerMediaSourceFactoryTest {
     }
 
     @Test
+    fun `Matroska sources are detected from mime or filename`() {
+        assertTrue(
+            PlayerMediaSourceFactory.isMatroskaSource(
+                mimeType = "video/x-matroska",
+                filename = null,
+                url = "https://example.com/stream"
+            )
+        )
+        assertTrue(
+            PlayerMediaSourceFactory.isMatroskaSource(
+                mimeType = "application/octet-stream",
+                filename = "episode.MKV",
+                url = "https://example.com/stream"
+            )
+        )
+    }
+
+    @Test
+    fun `non Matroska progressive source is not detected as Matroska`() {
+        assertFalse(
+            PlayerMediaSourceFactory.isMatroskaSource(
+                mimeType = "video/mp4",
+                filename = "episode.mp4",
+                url = "https://example.com/stream"
+            )
+        )
+    }
+
+    @Test
     fun `isLoopbackNonTorrServerUrl returns true for Usenet or local proxy loopback streams`() {
         assertTrue(
             PlayerMediaSourceFactory.isLoopbackNonTorrServerUrl("http://127.0.0.1:51234/stream/movie.mkv")

@@ -261,6 +261,7 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
             cachedProgressiveFactory
         }
         // BUFFER_NETWORK reports the setting before this runs, so report what the stream actually got.
+        Log.i(LOG_TAG, "PLAYBACK_SOURCE_PATH: parallelRanges=$useChunkSessionSource vodCacheEligible=$useVodCache")
         Log.i(
             LOG_TAG,
             "VOD_CACHE: enabled=$vodCacheEnabled active=$currentVodCacheActive " +
@@ -544,6 +545,25 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
                 url = cleanUrl,
                 headers = sanitizeHeaders(mergedHeaders)
             )
+        }
+
+        internal fun isMatroskaSource(
+            mimeType: String?,
+            filename: String?,
+            url: String?
+        ): Boolean {
+            val normalizedMime = mimeType?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)
+            if (normalizedMime?.contains("matroska") == true) return true
+
+            fun hasMatroskaExtension(value: String?): Boolean {
+                val path = value?.substringBefore('#')?.substringBefore('?') ?: return false
+                val filenameOrSegment = path.substringAfterLast('/')
+                return listOf(".mkv", ".mka", ".mk3d", ".mks").any {
+                    filenameOrSegment.endsWith(it, ignoreCase = true)
+                }
+            }
+
+            return hasMatroskaExtension(filename) || hasMatroskaExtension(url)
         }
 
         internal fun isLoopbackNonTorrServerUrl(url: String): Boolean {

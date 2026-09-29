@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -38,6 +39,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -136,7 +138,7 @@ fun ModernHomeContent(
     onNavigateToFolderDetail: (String, String) -> Unit = { _, _ -> },
     onItemFocus: (MetaPreview) -> Unit = {},
     onPreloadAdjacentItem: (MetaPreview) -> Unit = {},
-    onSaveFocusState: (Int, Int, String?, Map<String, String>, Map<String, Int>, Int, Int) -> Unit,
+    onSaveFocusState: (Int, Int, String?, Map<String, String>, Map<String, Int>, Map<String, String>, Int, Int) -> Unit,
     onFocusedRowKeyChanged: (String?) -> Unit = {},
     scrollToTopTrigger: Int = 0,
     onRequestLazyCatalogLoad: (String) -> Unit = {},
@@ -149,6 +151,7 @@ fun ModernHomeContent(
     val isSidebarExpanded = remember(sidebarExpanded) { derivedStateOf { sidebarExpanded } }
     val lifecycleOwner = LocalLifecycleOwner.current
     val useLandscapePosters = uiState.modernLandscapePostersEnabled
+    val alwaysShowLandscapeClearlogo = uiState.alwaysShowLandscapeClearlogo
     val fullScreenBackdrop = uiState.modernHeroFullScreenBackdropEnabled
     val trailerPlaybackTarget = uiState.focusedPosterBackdropTrailerPlaybackTarget
     val effectiveAutoplayEnabled =
@@ -219,18 +222,13 @@ fun ModernHomeContent(
     val stableRowListStates = remember { StableRef<MutableMap<String, LazyListState>>(rowListStates) }
     val stableLoadMoreRequestedTotals = remember { StableRef<MutableMap<String, Int>>(loadMoreRequestedTotals) }
     if (focusedItemByRow.isEmpty() && focusState.hasSavedFocus) {
-        val savedRowKey = focusState.focusedRowKey
-        if (savedRowKey != null) {
-            val savedItemKey = focusState.focusedItemKeyByRow[savedRowKey]
-            if (savedItemKey != null) {
-                val row = carouselRows.list.firstOrNull { it.key == savedRowKey }
-                if (row != null) {
-                    val itemIndex = row.items.list.indexOfFirst { it.key == savedItemKey }
-                    if (itemIndex >= 0) {
-                        focusedItemByRow[savedRowKey] = itemIndex
-                    }
-                }
-            }
+        // Every row is saved, so restore every row, not only the one that held focus.
+        val rowsByKey = carouselRows.list.associateBy { it.key }
+        focusState.focusedItemKeyByRow.forEach { (rowKey, savedItemKey) ->
+            if (savedItemKey.isBlank()) return@forEach
+            val row = rowsByKey[rowKey] ?: return@forEach
+            val itemIndex = row.items.list.indexOfFirst { it.key == savedItemKey }
+            if (itemIndex >= 0) focusedItemByRow[rowKey] = itemIndex
         }
     }
 
@@ -376,6 +374,8 @@ fun ModernHomeContent(
 
     val currentItemIdentitiesByRow = carouselLookups.itemIdentitiesByRow.map
     if (itemIdentitySnapshot.byRow !== currentItemIdentitiesByRow) {
+        // Issued after composition: requestScrollToItem writes to a LazyListState.
+        val pendingRowScrolls = mutableListOf<Pair<LazyListState, Int>>()
         currentItemIdentitiesByRow.forEach { (rowKey, currentIdentities) ->
             val storedIndex = focusedItemByRow[rowKey]
             val relocatedIndex = findRelocatedItemIndex(
@@ -385,9 +385,26 @@ fun ModernHomeContent(
             )
             if (relocatedIndex != null && relocatedIndex != storedIndex) {
                 focusedItemByRow[rowKey] = relocatedIndex
+                // The hero reads its own index, synced by an effect keyed on the row size, so it
+                // would land a frame late and show whatever took the old index meanwhile.
+                if (rowKey == activeRowKey.value) {
+                    focusHolder.activeItemIndex = relocatedIndex
+                    activeItemIndex.intValue = relocatedIndex
+                }
+                // Compose only moves the window on the row's next measure, and then after its old
+                // first card, which at a row's end is not the focused one. Either way the restorer
+                // finds no requester for the relocated card. Read without observation, or Home
+                // would recompose whenever a row state is added.
+                Snapshot.withoutReadObservation {
+                    val state = rowListStates[rowKey] ?: return@withoutReadObservation
+                    pendingRowScrolls += state to relocatedIndex
+                }
             }
         }
-        itemIdentitySnapshot.byRow = currentItemIdentitiesByRow
+        SideEffect {
+            pendingRowScrolls.forEach { (state, index) -> state.requestScrollToItem(index) }
+            itemIdentitySnapshot.byRow = currentItemIdentitiesByRow
+        }
     }
 
     LaunchedEffect(carouselRows, focusState.hasSavedFocus) {
@@ -585,6 +602,7 @@ fun ModernHomeContent(
     val latestCarouselRows by rememberUpdatedState(carouselRows)
     val latestVerticalRowListState by rememberUpdatedState(verticalRowListState)
     val latestRowIndexByKey = rememberUpdatedState(rowIndexByKey)
+    val latestSavedScrollAnchors by rememberUpdatedState(focusState.catalogRowScrollAnchors)
     DisposableEffect(Unit) {
         onDispose {
             val row = latestActiveRow
@@ -613,12 +631,28 @@ fun ModernHomeContent(
                     rowState.key to scrollIndex
                 }
 
+            // A row not composed since the return has no state: keep the anchor it came back with.
+            val liveRowKeys = latestCarouselRows.map { it.key }.toSet()
+            val catalogRowScrollAnchors = latestSavedScrollAnchors.filterKeys { it in liveRowKeys } + latestCarouselRows
+                .mapNotNull { rowState ->
+                    val state = rowListStates[rowState.key] ?: return@mapNotNull null
+                    // The card last measured there: an off-screen row is not re-measured when items land in front.
+                    val anchorKey = (state.layoutInfo.visibleItemsInfo
+                        .firstOrNull { it.index == state.firstVisibleItemIndex }?.key as? String)
+                        ?.takeIf { key -> rowState.items.list.any { it.key == key } }
+                        ?: rowState.items.list.getOrNull(state.firstVisibleItemIndex)?.key
+                        ?: return@mapNotNull null
+                    rowState.key to anchorKey
+                }
+                .toMap()
+
             onSaveFocusState(
                 latestVerticalRowListState.firstVisibleItemIndex,
                 latestVerticalRowListState.firstVisibleItemScrollOffset,
                 focusedRowKey,
                 focusedItemKeyByRow,
                 catalogRowScrollStates,
+                catalogRowScrollAnchors,
                 focusedRowIndex,
                 focusedItemIndex
             )
@@ -1155,6 +1189,7 @@ fun ModernHomeContent(
                 trailerPreviewUrls = stableTrailerPreviewUrls,
                 trailerPreviewAudioUrls = stableTrailerPreviewAudioUrls,
                 useLandscapePosters = useLandscapePosters,
+                alwaysShowLandscapeClearlogo = alwaysShowLandscapeClearlogo,
                 showLabels = uiState.posterLabelsEnabled,
                 posterCardCornerRadius = posterCardCornerRadius,
                 focusedPosterBackdropTrailerMuted = uiState.focusedPosterBackdropTrailerMuted,

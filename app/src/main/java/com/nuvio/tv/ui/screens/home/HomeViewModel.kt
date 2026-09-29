@@ -67,6 +67,8 @@ class HomeViewModel @Inject constructor(
     internal val watchProgressRepository: WatchProgressRepository,
     internal val libraryRepository: LibraryRepository,
     internal val metaRepository: MetaRepository,
+    internal val episodeShuffleStore: com.nuvio.tv.data.local.EpisodeShuffleStore,
+    internal val episodeShuffle: com.nuvio.tv.domain.model.EpisodeShuffle,
     internal val collectionsDataStore: CollectionsDataStore,
     internal val layoutPreferenceDataStore: LayoutPreferenceDataStore,
     internal val playerSettingsDataStore: PlayerSettingsDataStore,
@@ -111,7 +113,12 @@ class HomeViewModel @Inject constructor(
     }
 
     internal val _uiState = MutableStateFlow(HomeUiState())
-    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+    internal val shuffleHomeRefresh = MutableStateFlow(HomeShuffleRefresh())
+    val uiState: StateFlow<HomeUiState> by lazy { createShuffleHomeState() }
+
+    fun beginShuffleHomeVisit() {
+        shuffleHomeRefresh.update { it.copy(visit = it.visit + 1) }
+    }
 
     internal val _modernHomePresentation = MutableStateFlow(ModernHomePresentationState())
     val modernHomePresentation: StateFlow<ModernHomePresentationState> = _modernHomePresentation.asStateFlow()
@@ -519,6 +526,19 @@ class HomeViewModel @Inject constructor(
                     _uiState.update { it.copy(customPosterUrlPattern = pattern) }
                     if (initialPattern) {
                         initialPattern = false
+                    } else {
+                        refreshVisibleCatalogsPipeline(forceReplace = true)
+                    }
+                }
+        }
+        viewModelScope.launch {
+            var initialScreens = true
+            layoutPreferenceDataStore.customPosterEnabledScreens
+                .distinctUntilChanged()
+                .collect { screens ->
+                    _uiState.update { it.copy(customPosterEnabledScreens = screens) }
+                    if (initialScreens) {
+                        initialScreens = false
                     } else {
                         refreshVisibleCatalogsPipeline(forceReplace = true)
                     }
@@ -933,6 +953,7 @@ class HomeViewModel @Inject constructor(
         focusedRowKey: String?,
         focusedItemKeyByRow: Map<String, String>,
         catalogRowScrollStates: Map<String, Int>,
+        catalogRowScrollAnchors: Map<String, String>,
         focusedRowIndex: Int = 0,
         focusedItemIndex: Int = 0
     ) {
@@ -946,6 +967,7 @@ class HomeViewModel @Inject constructor(
             focusedRowKey = focusedRowKey,
             focusedItemKeyByRow = focusedItemKeyByRow,
             catalogRowScrollStates = catalogRowScrollStates,
+            catalogRowScrollAnchors = catalogRowScrollAnchors,
             focusedRowIndex = focusedRowIndex,
             focusedItemIndex = focusedItemIndex,
             hasSavedFocus = true

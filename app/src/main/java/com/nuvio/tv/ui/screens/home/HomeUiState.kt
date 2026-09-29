@@ -26,6 +26,7 @@ data class HomeUiState(
     val installedAddonsCount: Int = 0,
     val homeLayout: HomeLayout = HomeLayout.MODERN,
     val modernLandscapePostersEnabled: Boolean = false,
+    val alwaysShowLandscapeClearlogo: Boolean = false,
     val modernHeroFullScreenBackdropEnabled: Boolean = false,
     val homeImdbRatingsVisibility: HomeImdbRatingsVisibility = HomeImdbRatingsVisibility.SHOW_ALL,
     val heroItems: List<MetaPreview> = emptyList(),
@@ -68,11 +69,14 @@ data class HomeUiState(
     val heroEnrichmentEnabled: Boolean = false,
     val startupAuthNotice: StartupAuthNotice? = null,
     val homeRows: List<HomeRow> = emptyList(),
-    val customPosterUrlPattern: String = ""
+    val customPosterUrlPattern: String = "",
+    val customPosterEnabledScreens: Set<com.nuvio.tv.core.poster.CustomPosterScreen> =
+        com.nuvio.tv.core.poster.CustomPosterScreen.ALL
 )
 
 @Immutable
 sealed class ContinueWatchingItem {
+    abstract val shufflePlayback: Boolean
     @Immutable
     data class InProgress(
         val progress: WatchProgress,
@@ -82,6 +86,7 @@ sealed class ContinueWatchingItem {
         val genres: List<String> = emptyList(),
         val releaseInfo: String? = null,
         val contentLanguage: String? = null,
+        override val shufflePlayback: Boolean = false,
         val originalPoster: String? = null,
         val customLandscapePoster: String? = null
     ) : ContinueWatchingItem()
@@ -89,10 +94,17 @@ sealed class ContinueWatchingItem {
     @Immutable
     data class NextUp(
         val info: NextUpInfo,
+        override val shufflePlayback: Boolean = false,
         val originalPoster: String? = null,
         val customLandscapePoster: String? = null
     ) : ContinueWatchingItem()
 }
+
+val ContinueWatchingItem.shuffleFocusKey: String?
+    get() = if (!shufflePlayback) null else when (this) {
+        is ContinueWatchingItem.InProgress -> "cw_shuffle_${progress.contentId}"
+        is ContinueWatchingItem.NextUp -> "cw_shuffle_${info.contentId}"
+    }
 
 @Immutable
 data class NextUpInfo(
